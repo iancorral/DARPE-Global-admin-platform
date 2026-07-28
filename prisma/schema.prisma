@@ -1,0 +1,168 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider  = "postgresql"
+}
+
+enum UserRole {
+  OWNER
+  ADMIN
+}
+
+model Profile {
+  id        String   @id @db.Uuid
+  email     String   @unique
+  name      String
+  role      UserRole @default(ADMIN)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("profiles")
+}
+
+enum StudentStatus {
+  TRIAL
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+enum Modality {
+  ADVISORY
+  GROUP_EXTENSIVE
+  INDIVIDUAL_EXTENSIVE
+  INDIVIDUAL_INTENSIVE
+}
+
+enum ClassType {
+  INDIVIDUAL
+  GROUP
+}
+
+enum ClassStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+enum Attendance {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+model Language {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  code      String   @unique @db.VarChar(5)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  teachers TeacherLanguage[]
+  students Student[]
+  sessions ClassSession[]
+
+  @@map("languages")
+}
+
+model Teacher {
+  id              String   @id @default(cuid())
+  firstName       String
+  lastName        String
+  email           String?  @unique
+  phone           String?
+  hourlyRateCents Int?
+  notes           String?
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  languages      TeacherLanguage[]
+  primaryStudents Student[]
+  sessions       ClassSession[]
+
+  @@index([active])
+  @@map("teachers")
+}
+
+model TeacherLanguage {
+  teacherId  String
+  languageId String
+
+  teacher  Teacher  @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  language Language @relation(fields: [languageId], references: [id], onDelete: Restrict)
+
+  @@id([teacherId, languageId])
+  @@map("teacher_languages")
+}
+
+model Student {
+  id               String        @id @default(cuid())
+  firstName        String
+  lastName         String
+  email            String?
+  phone            String?
+  level            String?
+  goal             String?
+  modality         Modality
+  status           StudentStatus @default(ACTIVE)
+  startedAt        DateTime?
+  languageId       String
+  primaryTeacherId String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  language      Language           @relation(fields: [languageId], references: [id], onDelete: Restrict)
+  primaryTeacher Teacher?          @relation(fields: [primaryTeacherId], references: [id], onDelete: SetNull)
+  participations ClassParticipant[]
+
+  @@index([status])
+  @@index([primaryTeacherId])
+  @@map("students")
+}
+
+model ClassSession {
+  id              String      @id @default(cuid())
+  startsAt        DateTime
+  durationMinutes Int
+  type            ClassType
+  status          ClassStatus @default(SCHEDULED)
+  topic           String?
+  notes           String?
+  teacherId       String
+  languageId      String
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  teacher      Teacher            @relation(fields: [teacherId], references: [id], onDelete: Restrict)
+  language     Language           @relation(fields: [languageId], references: [id], onDelete: Restrict)
+  participants ClassParticipant[]
+
+  @@index([startsAt])
+  @@index([teacherId, startsAt])
+  @@map("class_sessions")
+}
+
+model ClassParticipant {
+  id             String      @id @default(cuid())
+  classSessionId String
+  studentId      String
+  attendance     Attendance?
+  notes          String?
+
+  classSession ClassSession @relation(fields: [classSessionId], references: [id], onDelete: Cascade)
+  student      Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([classSessionId, studentId])
+  @@map("class_participants")
+}
