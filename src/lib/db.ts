@@ -1,13 +1,14 @@
 import "server-only";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/generated/prisma/client";
+import { env } from "@/lib/env";
 
 const createPrismaClient = () => {
-  const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
+  const adapter = new PrismaPg({ connectionString: env.DATABASE_URL });
 
   return new PrismaClient({
     adapter,
-    log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
+    log: env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
   });
 };
 
