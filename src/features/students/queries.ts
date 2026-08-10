@@ -37,3 +37,18 @@ export async function getStudentFormOptions() {
 
   return { languages, teachers };
 }
+
+export async function getStudentById(id: string) {
+  return db.student.findUnique({
+    where: { id },
+    include: {
+      language: { select: { id: true, name: true } },
+      primaryTeacher: { select: { id: true, firstName: true, lastName: true } },
+      scheduleSlots: {
+        where: { active: true },
+        include: { teacher: { select: { id: true, firstName: true, lastName: true } } },
+        orderBy: [{ weekday: "asc" }, { startTime: "asc" }],
+      },
+    },
+  });
+}

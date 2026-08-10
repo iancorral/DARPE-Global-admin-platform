@@ -9,7 +9,7 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
+  provider = "postgresql"
 }
 
 enum UserRole {
@@ -87,9 +87,10 @@ model Teacher {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  languages      TeacherLanguage[]
+  languages       TeacherLanguage[]
   primaryStudents Student[]
-  sessions       ClassSession[]
+  sessions        ClassSession[]
+  scheduleSlots   ScheduleSlot[]
 
   @@index([active])
   @@map("teachers")
@@ -122,9 +123,10 @@ model Student {
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 
-  language      Language           @relation(fields: [languageId], references: [id], onDelete: Restrict)
-  primaryTeacher Teacher?          @relation(fields: [primaryTeacherId], references: [id], onDelete: SetNull)
+  language       Language           @relation(fields: [languageId], references: [id], onDelete: Restrict)
+  primaryTeacher Teacher?           @relation(fields: [primaryTeacherId], references: [id], onDelete: SetNull)
   participations ClassParticipant[]
+  scheduleSlots  ScheduleSlot[]
 
   @@index([status])
   @@index([primaryTeacherId])
@@ -143,11 +145,17 @@ model ClassSession {
   languageId      String
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
+  scheduleSlotId  String?
+  // The slot occurrence this session was generated for. Never changes when the
+  // session is rescheduled, so regeneration still recognises it as existing.
+  slotOccurrenceOn DateTime? @db.Date
 
   teacher      Teacher            @relation(fields: [teacherId], references: [id], onDelete: Restrict)
   language     Language           @relation(fields: [languageId], references: [id], onDelete: Restrict)
   participants ClassParticipant[]
+  scheduleSlot ScheduleSlot?      @relation(fields: [scheduleSlotId], references: [id], onDelete: SetNull)
 
+  @@unique([scheduleSlotId, slotOccurrenceOn])
   @@index([startsAt])
   @@index([teacherId, startsAt])
   @@map("class_sessions")
@@ -165,4 +173,27 @@ model ClassParticipant {
 
   @@unique([classSessionId, studentId])
   @@map("class_participants")
+}
+
+model ScheduleSlot {
+  id              String   @id @default(cuid())
+  studentId       String
+  teacherId       String
+  weekday         Int // 0 = Sunday ... 6 = Saturday
+  startTime       String    @db.VarChar(5) // "13:00"
+  durationMinutes Int
+  startsOn        DateTime  @db.Date
+  endsOn          DateTime? @db.Date
+  active          Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  sessions ClassSession[]
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  teacher Teacher @relation(fields: [teacherId], references: [id], onDelete: Restrict)
+
+  @@index([studentId])
+  @@index([teacherId])
+  @@map("schedule_slots")
 }
