@@ -47,7 +47,9 @@ export default async function StudentsPage() {
               {students.map((student) => (
                 <TableRow key={student.id}>
                   <TableCell className="font-medium">
+                    <Link href={`/students/${student.id}`} className="hover:underline">
                     {student.firstName} {student.lastName}
+                    </Link>
                   </TableCell>
                   <TableCell className="hidden sm:table-cell">{student.language.name}</TableCell>
                   <TableCell className="hidden md:table-cell text-muted-foreground">
