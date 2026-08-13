@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { overlaps, partitionByTeacherAvailability } from "./conflicts";
+import { findOverlap, overlaps, partitionByTeacherAvailability } from "./conflicts";
 
 const at = (time: string, durationMinutes: number) => ({
   startsAt: new Date(`2026-08-12T${time}:00Z`),
@@ -13,6 +13,33 @@ describe("overlaps", () => {
 
   it("allows back-to-back classes", () => {
     expect(overlaps(at("09:00", 60), at("10:00", 60))).toBe(false);
+  });
+});
+
+/**
+ * The predicate a single new or moved class is checked with. Candidates are
+ * already narrowed to one teacher and to teacher-occupying statuses by the query,
+ * so this only decides the time comparison.
+ */
+describe("findOverlap", () => {
+  it("finds the class that would double-book the teacher", () => {
+    expect(findOverlap(at("09:30", 60), [at("09:00", 60)])).not.toBeNull();
+  });
+
+  it("allows a class that starts exactly when another ends", () => {
+    expect(findOverlap(at("10:00", 60), [at("09:00", 60)])).toBeNull();
+  });
+
+  it("allows a class that ends exactly when another starts", () => {
+    expect(findOverlap(at("08:00", 60), [at("09:00", 60)])).toBeNull();
+  });
+
+  it("reports no conflict when the teacher has nothing booked", () => {
+    expect(findOverlap(at("09:00", 60), [])).toBeNull();
+  });
+
+  it("finds a longer class still running when the new one starts", () => {
+    expect(findOverlap(at("09:30", 30), [at("09:00", 120)])).not.toBeNull();
   });
 });
 
