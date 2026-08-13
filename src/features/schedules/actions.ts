@@ -14,6 +14,7 @@ import {
   CONFLICT_LOOKBACK_MINUTES,
   partitionByTeacherAvailability,
 } from "@/features/sessions/conflicts";
+import { TEACHER_OCCUPYING_STATUSES } from "@/features/sessions/lifecycle";
 import { expandSlotsForMonth, occurrenceKey } from "./generation";
 import {
   generateMonthSchema,
@@ -176,7 +177,7 @@ export async function generateMonthlySessions(
   const occupied = await db.classSession.findMany({
     where: {
       teacherId: { in: [...new Set(pending.map((occurrence) => occurrence.teacherId))] },
-      status: { not: "CANCELLED" },
+      status: { in: TEACHER_OCCUPYING_STATUSES },
       startsAt: {
         gte: new Date(windowStart - CONFLICT_LOOKBACK_MINUTES * 60_000),
         lt: new Date(windowEnd),

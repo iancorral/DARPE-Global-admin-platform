@@ -1,7 +1,13 @@
 import "server-only";
 import { db } from "@/lib/db";
 import { DEFAULT_TIMEZONE, addDaysToDate, formatInZone, zonedToUtc } from "@/lib/datetime";
-import type { ClassStatus } from "@/generated/prisma/client";
+import type { Attendance, ClassStatus } from "@/generated/prisma/client";
+
+export type SessionParticipant = {
+  id: string;
+  studentName: string;
+  attendance: Attendance | null;
+};
 
 export type CalendarSession = {
   id: string;
@@ -14,7 +20,7 @@ export type CalendarSession = {
   languageName: string;
   teacherId: string;
   teacherName: string;
-  studentNames: string[];
+  participants: SessionParticipant[];
   isGenerated: boolean;
 };
 
@@ -53,9 +59,11 @@ function toCalendarSession(session: SessionRecord): CalendarSession {
     languageName: session.language.name,
     teacherId: session.teacher.id,
     teacherName: `${session.teacher.firstName} ${session.teacher.lastName}`,
-    studentNames: session.participants.map(
-      ({ student }) => `${student.firstName} ${student.lastName}`
-    ),
+    participants: session.participants.map((participant) => ({
+      id: participant.id,
+      studentName: `${participant.student.firstName} ${participant.student.lastName}`,
+      attendance: participant.attendance,
+    })),
     isGenerated: session.scheduleSlotId !== null,
   };
 }

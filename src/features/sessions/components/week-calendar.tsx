@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { placeDaySessions, visibleHourRange } from "../layout";
 import { SessionDialog } from "./session-dialog";
@@ -87,6 +88,7 @@ export function WeekCalendar({ days, sessions }: Props) {
                     const session = daySessions.find((s) => s.id === placement.id);
                     if (!session) return null;
                     const isCancelled = session.status === "CANCELLED";
+                    const isCompleted = session.status === "COMPLETED";
 
                     return (
                       <button
@@ -95,9 +97,13 @@ export function WeekCalendar({ days, sessions }: Props) {
                         onClick={() => setSelected(session)}
                         className={cn(
                           "absolute overflow-hidden rounded-md border border-l-2 px-2 py-1 text-left transition-colors",
-                          isCancelled
-                            ? "border-dashed border-l-muted-foreground/40 bg-muted/50 text-muted-foreground hover:bg-muted"
-                            : "border-l-violet-500 bg-card hover:border-violet-300 hover:bg-violet-50"
+                          isCancelled &&
+                            "border-dashed border-l-muted-foreground/40 bg-muted/50 text-muted-foreground hover:bg-muted",
+                          isCompleted &&
+                            "border-l-muted-foreground/30 bg-muted/30 text-muted-foreground hover:bg-muted/60",
+                          !isCancelled &&
+                            !isCompleted &&
+                            "border-l-violet-500 bg-card hover:border-violet-300 hover:bg-violet-50"
                         )}
                         style={{
                           top: placement.top + 2,
@@ -108,11 +114,15 @@ export function WeekCalendar({ days, sessions }: Props) {
                       >
                         <span
                           className={cn(
-                            "block truncate text-[11px] font-medium",
-                            isCancelled ? "line-through" : "text-foreground"
+                            "flex items-center gap-1 truncate text-[11px] font-medium",
+                            isCancelled && "line-through",
+                            !isCancelled && !isCompleted && "text-foreground"
                           )}
                         >
-                          {session.studentNames[0] ?? "Class"}
+                          {isCompleted && <Check className="size-3 shrink-0" />}
+                          <span className="truncate">
+                            {session.participants[0]?.studentName ?? "Class"}
+                          </span>
                         </span>
                         <span className="block truncate text-[10px] text-muted-foreground">
                           {session.startLabel} · {session.teacherName.split(" ")[0]}
