@@ -14,6 +14,7 @@ import {
   CONFLICT_LOOKBACK_MINUTES,
   partitionByTeacherAvailability,
 } from "@/features/sessions/conflicts";
+import { ELIGIBLE_STUDENT_STATUSES } from "@/features/sessions/eligibility";
 import { TEACHER_OCCUPYING_STATUSES } from "@/features/sessions/lifecycle";
 import { expandSlotsForMonth, occurrenceKey } from "./generation";
 import {
@@ -107,7 +108,7 @@ export async function generateMonthlySessions(
     where: {
       active: true,
       teacher: { active: true },
-      student: { status: { in: ["ACTIVE", "TRIAL"] } },
+      student: { status: { in: ELIGIBLE_STUDENT_STATUSES } },
     },
     select: {
       id: true,

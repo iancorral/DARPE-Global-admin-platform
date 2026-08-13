@@ -10,6 +10,9 @@ import {
 } from "@/components/ui/select";
 import { generateMonthlySessions, type GenerationConflict } from "@/features/schedules/actions";
 import { addDaysToDate } from "@/lib/datetime";
+import { calendarUrl } from "../scheduling";
+import { CreateClassDialog } from "./create-class-dialog";
+import type { CreateClassStudent, CreateClassTeacher } from "../queries";
 
 const ALL_TEACHERS = "all";
 const MAX_LISTED_CONFLICTS = 4;
@@ -20,6 +23,13 @@ type Props = {
   teacherId?: string;
   teachers: { id: string; firstName: string; lastName: string }[];
   generationMonth: { year: number; month: number; label: string };
+  createClass: {
+    students: CreateClassStudent[];
+    teachers: CreateClassTeacher[];
+    defaultDate: string;
+  };
+  /** Carried through navigation so changing week does not drop an active move. */
+  movingSessionId?: string;
 };
 
 export function CalendarToolbar({
@@ -28,6 +38,8 @@ export function CalendarToolbar({
   teacherId,
   teachers,
   generationMonth,
+  createClass,
+  movingSessionId,
 }: Props) {
   const router = useRouter();
   const [isNavigating, startNavigation] = useTransition();
@@ -38,9 +50,11 @@ export function CalendarToolbar({
 
   function go(nextWeek: string, nextTeacher?: string) {
     setConflicts([]);
-    const params = new URLSearchParams({ week: nextWeek });
-    if (nextTeacher) params.set("teacher", nextTeacher);
-    startNavigation(() => router.push(`/calendar?${params.toString()}`));
+    startNavigation(() =>
+      router.push(
+        calendarUrl({ week: nextWeek, teacher: nextTeacher, moving: movingSessionId })
+      )
+    );
   }
 
   async function handleGenerate() {
@@ -130,6 +144,13 @@ export function CalendarToolbar({
           <RefreshCw className="size-4" />
           {isGenerating ? "Generating..." : `Generate ${generationMonth.label}`}
         </Button>
+
+        <CreateClassDialog
+          students={createClass.students}
+          teachers={createClass.teachers}
+          defaultDate={createClass.defaultDate}
+          disabled={isBusy}
+        />
       </div>
 
       {conflicts.length > 0 && (

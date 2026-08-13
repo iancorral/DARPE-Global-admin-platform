@@ -1,4 +1,8 @@
-import { getWeekSessions } from "@/features/sessions/queries";
+import {
+  getCreateClassOptions,
+  getMovableSession,
+  getWeekSessions,
+} from "@/features/sessions/queries";
 import { calendarParamsSchema } from "@/features/sessions/schemas";
 import { CalendarToolbar } from "@/features/sessions/components/calendar-toolbar";
 import { WeekCalendar, type CalendarDay } from "@/features/sessions/components/week-calendar";
@@ -18,7 +22,7 @@ const VISIBLE_DAYS = 6;
 export default async function CalendarPage({
   searchParams,
 }: {
-  searchParams: Promise<{ week?: string; teacher?: string }>;
+  searchParams: Promise<{ week?: string; teacher?: string; moving?: string }>;
 }) {
   const params = calendarParamsSchema.safeParse(await searchParams);
   const today = todayInZone(DEFAULT_TIMEZONE);
@@ -28,10 +32,13 @@ export default async function CalendarPage({
     ? startOfWeekDate(params.data.week)
     : todayWeekStart;
   const teacherId = params.success ? params.data.teacher : undefined;
+  const movingId = params.success ? params.data.moving : undefined;
 
-  const [sessions, { teachers }] = await Promise.all([
+  const [sessions, { teachers }, createClassOptions, movingSession] = await Promise.all([
     getWeekSessions(weekStart, teacherId),
     getScheduleFormOptions(),
+    getCreateClassOptions(),
+    movingId ? getMovableSession(movingId) : Promise.resolve(null),
   ]);
 
   const days: CalendarDay[] = Array.from({ length: VISIBLE_DAYS }, (_, index) => {
@@ -48,6 +55,10 @@ export default async function CalendarPage({
 
   const visibleDates = new Set(days.map((day) => day.date));
   const hiddenCount = sessions.filter((session) => !visibleDates.has(session.date)).length;
+
+  // A new class most often belongs to the week being looked at, so the form opens
+  // on today when today is in view and on the start of that week otherwise.
+  const defaultClassDate = visibleDates.has(today) ? today : weekStart;
 
   const weekEnd = addDaysToDate(weekStart, VISIBLE_DAYS - 1);
   const rangeLabel = `${formatInZone(parseDateOnly(weekStart), "UTC", "MMM d")} – ${formatInZone(
@@ -78,10 +89,23 @@ export default async function CalendarPage({
             month: generationMonth,
             label: `${MONTHS.find((m) => m.value === generationMonth)?.label ?? ""} ${generationYear}`,
           }}
+          createClass={{
+            students: createClassOptions.students,
+            teachers: createClassOptions.teachers,
+            defaultDate: defaultClassDate,
+          }}
+          movingSessionId={movingSession?.id}
         />
       </div>
 
-      <WeekCalendar days={days} sessions={sessions} />
+      <WeekCalendar
+        days={days}
+        sessions={sessions}
+        teachers={createClassOptions.teachers}
+        weekStart={weekStart}
+        teacherId={teacherId}
+        movingSession={movingSession}
+      />
 
       {hiddenCount > 0 && (
         <p className="mt-3 text-xs text-muted-foreground">
