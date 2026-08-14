@@ -17,6 +17,7 @@ import {
 import { completeSession, setSessionStatus, updateSessionScheduling } from "../actions";
 import { canEditScheduling, canRecordAttendance } from "../lifecycle";
 import { calendarUrl } from "../scheduling";
+import { StartTimeSelect } from "./start-time-select";
 import { ATTENDANCE_OPTIONS, DURATION_OPTIONS, type AttendanceValue } from "../schemas";
 import type { CalendarSession, CreateClassTeacher } from "../queries";
 
@@ -234,11 +235,11 @@ function SessionDetail({
 
           <div className="space-y-2">
             <Label htmlFor="session-time">Start time</Label>
-            <Input
+            <StartTimeSelect
               id="session-time"
-              type="time"
               value={startTime}
-              onChange={(e) => setStartTime(e.target.value)}
+              current={session.startLabel}
+              onValueChange={setStartTime}
             />
           </div>
 

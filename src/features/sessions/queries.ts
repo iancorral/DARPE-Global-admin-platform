@@ -2,6 +2,7 @@ import "server-only";
 import { db } from "@/lib/db";
 import { DEFAULT_TIMEZONE, addDaysToDate, formatInZone, zonedToUtc } from "@/lib/datetime";
 import { ELIGIBLE_STUDENT_STATUSES } from "./eligibility";
+import { TEACHER_OCCUPYING_STATUSES } from "./lifecycle";
 import type { Attendance, ClassStatus } from "@/generated/prisma/client";
 
 export type SessionParticipant = {
@@ -127,6 +128,62 @@ export async function getMovableSession(id: string): Promise<MovingSession | nul
     studentName: student ? `${student.firstName} ${student.lastName}` : "Class",
     languageName: session.language.name,
   };
+}
+
+/**
+ * A block of a teacher's week that is already taken, as minutes within its day.
+ *
+ * Deliberately anonymous: classifying a destination only needs when the teacher is
+ * busy, never who with. No student, teacher, language or attendance detail is sent,
+ * so a move never leaks a class the visible calendar was not already showing.
+ */
+export type TeacherBusyBlock = {
+  date: string;
+  startMinutes: number;
+  durationMinutes: number;
+};
+
+/**
+ * When the teacher of the class being moved is already booked, for one week.
+ *
+ * Loaded separately from the calendar's own sessions on purpose. The teacher filter
+ * is a display choice — it decides which cards are drawn — and must never decide
+ * which classes count as a conflict, or filtering to a colleague would make every
+ * destination look free. Scoped to this one teacher, so it stays the smallest read
+ * that can answer the question.
+ *
+ * Cancelled classes are left out: they free the teacher's time. Completed ones are
+ * kept, because they actually happened. The moved class excludes itself, so its own
+ * current time reads as its original position rather than as a conflict.
+ */
+export async function getTeacherWeekAvailability(
+  teacherId: string,
+  weekStart: string,
+  excludeSessionId: string
+): Promise<TeacherBusyBlock[]> {
+  const start = zonedToUtc(weekStart, "00:00", DEFAULT_TIMEZONE);
+  const end = zonedToUtc(addDaysToDate(weekStart, 7), "00:00", DEFAULT_TIMEZONE);
+
+  const busy = await db.classSession.findMany({
+    where: {
+      teacherId,
+      id: { not: excludeSessionId },
+      status: { in: TEACHER_OCCUPYING_STATUSES },
+      startsAt: { gte: start, lt: end },
+    },
+    select: { startsAt: true, durationMinutes: true },
+    orderBy: { startsAt: "asc" },
+  });
+
+  return busy.map((session) => {
+    const [hours = "0", minutes = "0"] = formatInZone(session.startsAt, DEFAULT_TIMEZONE).split(":");
+
+    return {
+      date: formatInZone(session.startsAt, DEFAULT_TIMEZONE, "yyyy-MM-dd"),
+      startMinutes: Number(hours) * 60 + Number(minutes),
+      durationMinutes: session.durationMinutes,
+    };
+  });
 }
 
 export type CreateClassStudent = {

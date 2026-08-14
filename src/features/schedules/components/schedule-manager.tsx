@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { StartTimeSelect } from "@/features/sessions/components/start-time-select";
 import { createScheduleSlot, deactivateScheduleSlot } from "../actions";
 import { WEEKDAYS } from "../schemas";
 
@@ -178,8 +179,12 @@ export function ScheduleManager({ studentId, slots, teachers }: Props) {
               </div>
 
               <div className="space-y-2">
-                <Label>Start time</Label>
-                <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+                <Label htmlFor="slot-start-time">Start time</Label>
+                <StartTimeSelect
+                  id="slot-start-time"
+                  value={startTime}
+                  onValueChange={setStartTime}
+                />
               </div>
 
               <div className="space-y-2">

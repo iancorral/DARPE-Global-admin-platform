@@ -16,6 +16,7 @@ import {
 } from "@/features/sessions/conflicts";
 import { ELIGIBLE_STUDENT_STATUSES } from "@/features/sessions/eligibility";
 import { TEACHER_OCCUPYING_STATUSES } from "@/features/sessions/lifecycle";
+import { firstValidationMessage } from "@/features/sessions/schemas";
 import { expandSlotsForMonth, occurrenceKey } from "./generation";
 import {
   generateMonthSchema,
@@ -42,7 +43,10 @@ export async function createScheduleSlot(input: ScheduleSlotInput): Promise<Acti
 
   const parsed = scheduleSlotSchema.safeParse(input);
   if (!parsed.success) {
-    return { success: false, error: "Please check the form and try again." };
+    return {
+      success: false,
+      error: firstValidationMessage(parsed.error, "Please check the form and try again."),
+    };
   }
 
   const { studentId, teacherId, weekday, startTime, durationMinutes } = parsed.data;

@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { DEFAULT_TIMEZONE, formatInZone, zonedToUtc } from "@/lib/datetime";
+import { creationInputFor } from "./scheduling";
 import {
   ELIGIBLE_STUDENT_STATUSES,
   buildManualSession,
@@ -170,5 +172,59 @@ describe("buildManualSession", () => {
 
   it("links the participant to the selected student", () => {
     expect(draft.participant).toEqual({ studentId: "student-1" });
+  });
+});
+
+/**
+ * The whole path a calendar position takes to become a class, minus the database:
+ * position → date and wall-clock time → academy timezone → the record written.
+ */
+describe("a class created from a calendar position", () => {
+  const slot = { date: "2026-08-17", startMinutes: 570, dayLabel: "Mon 17" };
+  const { date, startTime } = creationInputFor(slot);
+
+  const draft = buildManualSession({
+    startsAt: zonedToUtc(date, startTime, DEFAULT_TIMEZONE),
+    durationMinutes: 60,
+    teacherId: "teacher-1",
+    student: { id: "student-1", languageId: "lang-en" },
+  });
+
+  it("stores the instant the chosen position means in the academy's timezone", () => {
+    expect(formatInZone(draft.session.startsAt, DEFAULT_TIMEZONE, "yyyy-MM-dd")).toBe(
+      "2026-08-17"
+    );
+    expect(formatInZone(draft.session.startsAt, DEFAULT_TIMEZONE)).toBe("09:30");
+  });
+
+  it("stores it as an absolute instant, not as the academy's wall clock", () => {
+    // Chihuahua is behind UTC, so the stored UTC time is not 09:30.
+    expect(draft.session.startsAt.toISOString()).not.toContain("T09:30");
+  });
+
+  it("is still a one-off class that recurring generation will not touch", () => {
+    expect(draft.session.scheduleSlotId).toBeNull();
+    expect(draft.session.slotOccurrenceOn).toBeNull();
+    expect(draft.session.status).toBe("SCHEDULED");
+    expect(draft.session.type).toBe("INDIVIDUAL");
+  });
+
+  it("takes its language from the student, never from the calendar", () => {
+    expect(draft.session.languageId).toBe("lang-en");
+  });
+
+  it("creates a class in the past just like any other, for backfilling", () => {
+    const past = creationInputFor({ date: "2020-01-06", startMinutes: 540, dayLabel: "Mon 6" });
+    const backfilled = buildManualSession({
+      startsAt: zonedToUtc(past.date, past.startTime, DEFAULT_TIMEZONE),
+      durationMinutes: 60,
+      teacherId: "teacher-1",
+      student: { id: "student-1", languageId: "lang-en" },
+    });
+
+    expect(formatInZone(backfilled.session.startsAt, DEFAULT_TIMEZONE, "yyyy-MM-dd")).toBe(
+      "2020-01-06"
+    );
+    expect(backfilled.session.status).toBe("SCHEDULED");
   });
 });

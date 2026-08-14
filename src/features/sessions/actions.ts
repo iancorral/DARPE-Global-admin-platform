@@ -16,10 +16,12 @@ import {
   checkManualClassEligibility,
   checkTeacherForLanguage,
 } from "./eligibility";
-import { buildSchedulingUpdate } from "./scheduling";
+import { buildSchedulingUpdate, isStartTimeChangeAllowed } from "./scheduling";
 import {
+  ALIGNED_START_MESSAGE,
   completeSessionSchema,
   createSessionSchema,
+  firstValidationMessage,
   sessionStatusSchema,
   updateSessionSchedulingSchema,
   type CompleteSessionInput,
@@ -27,8 +29,46 @@ import {
   type SessionStatusInput,
   type UpdateSessionSchedulingInput,
 } from "./schemas";
+import { Prisma } from "@/generated/prisma/client";
 
 export type ActionResult = { success: true } | { success: false; error: string };
+
+/** Prisma's code for a transaction rolled back because it could not be serialized. */
+const SERIALIZATION_FAILURE = "P2034";
+
+const CONCURRENT_UPDATE_ERROR =
+  "Someone updated that time at the same moment. Please try again.";
+
+/**
+ * Runs a scheduling decision and the write it leads to as one serializable
+ * transaction.
+ *
+ * Checking a teacher's availability and then booking them are two statements, and
+ * between them another coordinator can book the same teacher: both checks pass,
+ * both writes land, and the teacher is double-booked. Serializable isolation makes
+ * Postgres refuse one of the two, which turns a silent double-booking into a
+ * retryable message.
+ *
+ * Only the serialization failure is translated. Anything else is a real fault and
+ * is rethrown untouched, so it reaches the project's normal error handling instead
+ * of being reported to staff as a scheduling clash.
+ */
+async function inSchedulingTransaction(
+  run: (tx: Prisma.TransactionClient) => Promise<ActionResult>
+): Promise<ActionResult> {
+  try {
+    return await db.$transaction(run, { isolationLevel: "Serializable" });
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === SERIALIZATION_FAILURE
+    ) {
+      return { success: false, error: CONCURRENT_UPDATE_ERROR };
+    }
+
+    throw error;
+  }
+}
 
 /**
  * The first active session that would double-book this teacher. Cancelled classes
@@ -38,13 +78,19 @@ export type ActionResult = { success: true } | { success: false; error: string }
  *
  * `excludeSessionId` is null when the session does not exist yet, as when a class
  * is being created; moving an existing one excludes itself.
+ *
+ * Takes the client to run on so callers can run it inside their transaction. That
+ * is the point of the parameter: the check has to be part of the same transaction
+ * as the write it guards, and there must still be only one definition of what a
+ * conflict is.
  */
 async function findTeacherConflict(
+  client: Prisma.TransactionClient,
   teacherId: string,
   excludeSessionId: string | null,
   target: TimeRange
 ): Promise<TimeRange | null> {
-  const candidates = await db.classSession.findMany({
+  const candidates = await client.classSession.findMany({
     where: {
       teacherId,
       ...(excludeSessionId && { id: { not: excludeSessionId } }),
@@ -82,74 +128,80 @@ export async function createSession(input: CreateSessionInput): Promise<ActionRe
 
   const parsed = createSessionSchema.safeParse(input);
   if (!parsed.success) {
-    return { success: false, error: "Please check the form and try again." };
+    return {
+      success: false,
+      error: firstValidationMessage(parsed.error, "Please check the form and try again."),
+    };
   }
 
   const { studentId, teacherId, date, startTime, durationMinutes } = parsed.data;
 
-  const [student, teacher] = await Promise.all([
-    db.student.findUnique({
-      where: { id: studentId },
-      select: {
-        id: true,
-        firstName: true,
-        lastName: true,
-        status: true,
-        languageId: true,
-        language: { select: { name: true } },
+  // Everything from here on runs in one serializable transaction: the eligibility
+  // the decision rests on, the conflict check, and the write it authorises.
+  const result = await inSchedulingTransaction(async (tx) => {
+    const [student, teacher] = await Promise.all([
+      tx.student.findUnique({
+        where: { id: studentId },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          status: true,
+          languageId: true,
+          language: { select: { name: true } },
+        },
+      }),
+      tx.teacher.findUnique({
+        where: { id: teacherId },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          active: true,
+          languages: { select: { languageId: true } },
+        },
+      }),
+    ]);
+
+    if (!student) {
+      return { success: false, error: "That student no longer exists." };
+    }
+
+    if (!teacher) {
+      return { success: false, error: "That teacher no longer exists." };
+    }
+
+    const eligibility = checkManualClassEligibility({
+      student: {
+        name: `${student.firstName} ${student.lastName}`,
+        status: student.status,
+        languageId: student.languageId,
       },
-    }),
-    db.teacher.findUnique({
-      where: { id: teacherId },
-      select: {
-        id: true,
-        firstName: true,
-        lastName: true,
-        active: true,
-        languages: { select: { languageId: true } },
+      teacher: {
+        name: `${teacher.firstName} ${teacher.lastName}`,
+        active: teacher.active,
+        languageIds: teacher.languages.map((entry) => entry.languageId),
       },
-    }),
-  ]);
+      languageName: student.language.name,
+    });
 
-  if (!student) {
-    return { success: false, error: "That student no longer exists." };
-  }
+    if (!eligibility.ok) {
+      return { success: false, error: eligibility.error };
+    }
 
-  if (!teacher) {
-    return { success: false, error: "That teacher no longer exists." };
-  }
+    const draft = buildManualSession({
+      startsAt: zonedToUtc(date, startTime, DEFAULT_TIMEZONE),
+      durationMinutes,
+      teacherId: teacher.id,
+      student: { id: student.id, languageId: student.languageId },
+    });
 
-  const eligibility = checkManualClassEligibility({
-    student: {
-      name: `${student.firstName} ${student.lastName}`,
-      status: student.status,
-      languageId: student.languageId,
-    },
-    teacher: {
-      name: `${teacher.firstName} ${teacher.lastName}`,
-      active: teacher.active,
-      languageIds: teacher.languages.map((entry) => entry.languageId),
-    },
-    languageName: student.language.name,
-  });
+    const conflict = await findTeacherConflict(tx, teacher.id, null, draft.session);
+    if (conflict) {
+      return { success: false, error: describeConflict(teacher.firstName, conflict) };
+    }
 
-  if (!eligibility.ok) {
-    return { success: false, error: eligibility.error };
-  }
-
-  const draft = buildManualSession({
-    startsAt: zonedToUtc(date, startTime, DEFAULT_TIMEZONE),
-    durationMinutes,
-    teacherId: teacher.id,
-    student: { id: student.id, languageId: student.languageId },
-  });
-
-  const conflict = await findTeacherConflict(teacher.id, null, draft.session);
-  if (conflict) {
-    return { success: false, error: describeConflict(teacher.firstName, conflict) };
-  }
-
-  await db.$transaction(async (tx) => {
+    // Still one atomic pair: a class can never exist without its student.
     const session = await tx.classSession.create({
       data: draft.session,
       select: { id: true },
@@ -158,7 +210,13 @@ export async function createSession(input: CreateSessionInput): Promise<ActionRe
     await tx.classParticipant.create({
       data: { classSessionId: session.id, studentId: draft.participant.studentId },
     });
+
+    return { success: true };
   });
+
+  if (!result.success) {
+    return result;
+  }
 
   revalidatePath("/calendar");
   return { success: true };
@@ -176,6 +234,12 @@ export async function createSession(input: CreateSessionInput): Promise<ActionRe
  *
  * Refused when the class is completed or cancelled, and when the resulting state
  * would double-book the teacher.
+ *
+ * The start time must land on the scheduling interval unless it is the one the
+ * class already has: a class stored at 08:15 can still have its teacher, date or
+ * duration changed without being dragged onto the half hour, but any actual change
+ * of time has to be aligned. The stored value is read back to decide that, never
+ * taken from the client, and is never rewritten on its own.
  */
 export async function updateSessionScheduling(
   input: UpdateSessionSchedulingInput
@@ -189,69 +253,83 @@ export async function updateSessionScheduling(
 
   const { id, teacherId, date, startTime, durationMinutes } = parsed.data;
 
-  const session = await db.classSession.findUnique({
-    where: { id },
-    select: {
-      status: true,
-      languageId: true,
-      language: { select: { name: true } },
-    },
+  const result = await inSchedulingTransaction(async (tx) => {
+    const session = await tx.classSession.findUnique({
+      where: { id },
+      select: {
+        startsAt: true,
+        status: true,
+        languageId: true,
+        language: { select: { name: true } },
+      },
+    });
+
+    if (!session) {
+      return { success: false, error: "That session no longer exists." };
+    }
+
+    if (!canEditScheduling(session.status)) {
+      return {
+        success: false,
+        error:
+          session.status === "COMPLETED"
+            ? "This class is already completed. Reopen it before changing its time."
+            : "This class is cancelled. Restore it before changing its time.",
+      };
+    }
+
+    const currentStartTime = formatInZone(session.startsAt, DEFAULT_TIMEZONE);
+    if (!isStartTimeChangeAllowed(currentStartTime, startTime)) {
+      return { success: false, error: ALIGNED_START_MESSAGE };
+    }
+
+    const teacher = await tx.teacher.findUnique({
+      where: { id: teacherId },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        active: true,
+        languages: { select: { languageId: true } },
+      },
+    });
+
+    if (!teacher) {
+      return { success: false, error: "That teacher no longer exists." };
+    }
+
+    const eligibility = checkTeacherForLanguage(
+      {
+        name: `${teacher.firstName} ${teacher.lastName}`,
+        active: teacher.active,
+        languageIds: teacher.languages.map((entry) => entry.languageId),
+      },
+      { id: session.languageId, name: session.language.name }
+    );
+
+    if (!eligibility.ok) {
+      return { success: false, error: eligibility.error };
+    }
+
+    const update = buildSchedulingUpdate({
+      startsAt: zonedToUtc(date, startTime, DEFAULT_TIMEZONE),
+      durationMinutes,
+      teacherId: teacher.id,
+    });
+
+    const conflict = await findTeacherConflict(tx, teacher.id, id, update);
+    if (conflict) {
+      return { success: false, error: describeConflict(teacher.firstName, conflict) };
+    }
+
+    await tx.classSession.update({ where: { id }, data: update });
+
+    return { success: true };
   });
 
-  if (!session) {
-    return { success: false, error: "That session no longer exists." };
+  if (!result.success) {
+    return result;
   }
-
-  if (!canEditScheduling(session.status)) {
-    return {
-      success: false,
-      error:
-        session.status === "COMPLETED"
-          ? "This class is already completed. Reopen it before changing its time."
-          : "This class is cancelled. Restore it before changing its time.",
-    };
-  }
-
-  const teacher = await db.teacher.findUnique({
-    where: { id: teacherId },
-    select: {
-      id: true,
-      firstName: true,
-      lastName: true,
-      active: true,
-      languages: { select: { languageId: true } },
-    },
-  });
-
-  if (!teacher) {
-    return { success: false, error: "That teacher no longer exists." };
-  }
-
-  const eligibility = checkTeacherForLanguage(
-    {
-      name: `${teacher.firstName} ${teacher.lastName}`,
-      active: teacher.active,
-      languageIds: teacher.languages.map((entry) => entry.languageId),
-    },
-    { id: session.languageId, name: session.language.name }
-  );
-
-  if (!eligibility.ok) {
-    return { success: false, error: eligibility.error };
-  }
-
-  const update = buildSchedulingUpdate({
-    startsAt: zonedToUtc(date, startTime, DEFAULT_TIMEZONE),
-    durationMinutes,
-    teacherId: teacher.id,
-  });
-
-  const conflict = await findTeacherConflict(teacher.id, id, update);
-  if (conflict) {
-    return { success: false, error: describeConflict(teacher.firstName, conflict) };
-  }
-
-  await db.classSession.update({ where: { id }, data: update });
 
   revalidatePath("/calendar");
   return { success: true };
@@ -262,6 +340,11 @@ export async function updateSessionScheduling(
  * anything. Reopening re-occupies the teacher's time, so it is refused when
  * another active class has taken that slot in the meantime and the session keeps
  * the status it had.
+ *
+ * Reopening is a booking, so it runs serializably like any other: its conflict
+ * check and its write must not be separable by a class created in between.
+ * Cancelling shares the transaction rather than branching around it — it only
+ * frees time, so the isolation costs nothing.
  */
 export async function setSessionStatus(input: SessionStatusInput): Promise<ActionResult> {
   await requireUser();
@@ -273,46 +356,54 @@ export async function setSessionStatus(input: SessionStatusInput): Promise<Actio
 
   const { id, status } = parsed.data;
 
-  const session = await db.classSession.findUnique({
-    where: { id },
-    select: {
-      status: true,
-      teacherId: true,
-      startsAt: true,
-      durationMinutes: true,
-      teacher: { select: { firstName: true } },
-    },
-  });
+  const result = await inSchedulingTransaction(async (tx) => {
+    const session = await tx.classSession.findUnique({
+      where: { id },
+      select: {
+        status: true,
+        teacherId: true,
+        startsAt: true,
+        durationMinutes: true,
+        teacher: { select: { firstName: true } },
+      },
+    });
 
-  if (!session) {
-    return { success: false, error: "That session no longer exists." };
-  }
+    if (!session) {
+      return { success: false, error: "That session no longer exists." };
+    }
 
-  if (session.status === status) {
-    return { success: true };
-  }
+    if (session.status === status) {
+      return { success: true };
+    }
 
-  if (!canTransition(session.status, status)) {
-    return {
-      success: false,
-      error: "This class is completed. Reopen it before cancelling it.",
-    };
-  }
-
-  if (status === "SCHEDULED") {
-    const conflict = await findTeacherConflict(session.teacherId, id, session);
-    if (conflict) {
+    if (!canTransition(session.status, status)) {
       return {
         success: false,
-        error: `This class cannot be reopened. ${describeConflict(session.teacher.firstName, conflict)}`,
+        error: "This class is completed. Reopen it before cancelling it.",
       };
     }
-  }
 
-  await db.classSession.update({
-    where: { id },
-    data: { status },
+    if (status === "SCHEDULED") {
+      const conflict = await findTeacherConflict(tx, session.teacherId, id, session);
+      if (conflict) {
+        return {
+          success: false,
+          error: `This class cannot be reopened. ${describeConflict(session.teacher.firstName, conflict)}`,
+        };
+      }
+    }
+
+    await tx.classSession.update({
+      where: { id },
+      data: { status },
+    });
+
+    return { success: true };
   });
+
+  if (!result.success) {
+    return result;
+  }
 
   revalidatePath("/calendar");
   return { success: true };

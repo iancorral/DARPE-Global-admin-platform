@@ -1,6 +1,7 @@
 import {
   getCreateClassOptions,
   getMovableSession,
+  getTeacherWeekAvailability,
   getWeekSessions,
 } from "@/features/sessions/queries";
 import { calendarParamsSchema } from "@/features/sessions/schemas";
@@ -41,6 +42,13 @@ export default async function CalendarPage({
     movingId ? getMovableSession(movingId) : Promise.resolve(null),
   ]);
 
+  // Availability is a second, narrower read rather than part of the calendar's own
+  // sessions: the teacher filter decides which cards are drawn, and must never
+  // decide which classes count as a conflict. Only loaded while a move is open.
+  const movingTeacherBusy = movingSession
+    ? await getTeacherWeekAvailability(movingSession.teacherId, weekStart, movingSession.id)
+    : [];
+
   const days: CalendarDay[] = Array.from({ length: VISIBLE_DAYS }, (_, index) => {
     const date = addDaysToDate(weekStart, index);
     const asDate = parseDateOnly(date);
@@ -55,10 +63,6 @@ export default async function CalendarPage({
 
   const visibleDates = new Set(days.map((day) => day.date));
   const hiddenCount = sessions.filter((session) => !visibleDates.has(session.date)).length;
-
-  // A new class most often belongs to the week being looked at, so the form opens
-  // on today when today is in view and on the start of that week otherwise.
-  const defaultClassDate = visibleDates.has(today) ? today : weekStart;
 
   const weekEnd = addDaysToDate(weekStart, VISIBLE_DAYS - 1);
   const rangeLabel = `${formatInZone(parseDateOnly(weekStart), "UTC", "MMM d")} – ${formatInZone(
@@ -89,11 +93,6 @@ export default async function CalendarPage({
             month: generationMonth,
             label: `${MONTHS.find((m) => m.value === generationMonth)?.label ?? ""} ${generationYear}`,
           }}
-          createClass={{
-            students: createClassOptions.students,
-            teachers: createClassOptions.teachers,
-            defaultDate: defaultClassDate,
-          }}
           movingSessionId={movingSession?.id}
         />
       </div>
@@ -101,10 +100,13 @@ export default async function CalendarPage({
       <WeekCalendar
         days={days}
         sessions={sessions}
+        students={createClassOptions.students}
         teachers={createClassOptions.teachers}
         weekStart={weekStart}
+        today={today}
         teacherId={teacherId}
         movingSession={movingSession}
+        movingTeacherBusy={movingTeacherBusy}
       />
 
       {hiddenCount > 0 && (

@@ -2,7 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import {
-  SNAP_MINUTES,
+  SCHEDULING_INTERVAL_MINUTES,
   classifyDestination,
   formatSlotTime,
   offsetFromMinutes,
@@ -68,7 +68,7 @@ export function MoveDestinations({
   onActivate,
   onSelect,
 }: Props) {
-  const slotHeight = (SNAP_MINUTES / 60) * pixelsPerHour;
+  const slotHeight = (SCHEDULING_INTERVAL_MINUTES / 60) * pixelsPerHour;
 
   return (
     <>
