@@ -1,6 +1,33 @@
 import { z } from "zod";
+import { isAlignedStartTime } from "./scheduling";
 
 export const DURATION_OPTIONS = [30, 45, 60, 90, 120] as const;
+
+export const ALIGNED_START_MESSAGE = `Classes start on the hour or half hour. Choose a time ending in :00 or :30.`;
+
+/**
+ * The alignment rule as a schema fragment, for records being created.
+ *
+ * Kept out of `updateSessionSchedulingSchema` on purpose: whether an edit's start
+ * time is allowed depends on the time the class already has, which a static schema
+ * cannot see. That case is decided in the server action against the stored record.
+ */
+export const alignedStartTimeSchema = z
+  .string("Choose a start time")
+  .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use HH:MM format")
+  .refine(isAlignedStartTime, ALIGNED_START_MESSAGE);
+
+/**
+ * The first validation message, for actions that surface why input was rejected.
+ *
+ * Safe to show, but only because every field of the schemas used with it carries
+ * its own message for a missing value as well as an invalid one. Add a field
+ * without one and Zod's default — which describes the shape of the data rather
+ * than what the user did — would reach the screen. `schemas.test.ts` guards this.
+ */
+export function firstValidationMessage(error: z.ZodError, fallback: string): string {
+  return error.issues[0]?.message ?? fallback;
+}
 
 export const calendarParamsSchema = z.object({
   week: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -35,13 +62,13 @@ export type UpdateSessionSchedulingInput = z.infer<typeof updateSessionSchedulin
  * server, so the form cannot submit a class in a language the student does not study.
  */
 export const createSessionSchema = z.object({
-  studentId: z.string().min(1),
-  teacherId: z.string().min(1),
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD format"),
-  startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use HH:MM format"),
+  studentId: z.string("Select a student").min(1, "Select a student"),
+  teacherId: z.string("Select a teacher").min(1, "Select a teacher"),
+  date: z.string("Choose a date").regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD format"),
+  startTime: alignedStartTimeSchema,
   durationMinutes: z.coerce
-    .number()
-    .int()
+    .number("Choose one of the offered durations")
+    .int("Choose one of the offered durations")
     .refine(
       (value) => (DURATION_OPTIONS as readonly number[]).includes(value),
       "Choose one of the offered durations"

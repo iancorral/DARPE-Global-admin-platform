@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { alignedStartTimeSchema } from "@/features/sessions/schemas";
 
 export const WEEKDAYS = [
   { value: 1, label: "Monday" },
@@ -25,15 +26,23 @@ export const MONTHS = [
   { value: 12, label: "December" },
 ] as const;
 
-const dateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD format");
+const dateOnly = z.string("Choose a date").regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD format");
 
 export const scheduleSlotSchema = z
   .object({
-    studentId: z.string().min(1, "Select a student"),
-    teacherId: z.string().min(1, "Select a teacher"),
-    weekday: z.coerce.number().int().min(0).max(6),
-    startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use HH:MM format"),
-    durationMinutes: z.coerce.number().int().min(15).max(240),
+    studentId: z.string("Select a student").min(1, "Select a student"),
+    teacherId: z.string("Select a teacher").min(1, "Select a teacher"),
+    weekday: z.coerce
+      .number("Select a day")
+      .int("Select a day")
+      .min(0, "Select a day")
+      .max(6, "Select a day"),
+    startTime: alignedStartTimeSchema,
+    durationMinutes: z.coerce
+      .number("Enter a duration in minutes")
+      .int("Enter a whole number of minutes")
+      .min(15, "A class must be at least 15 minutes")
+      .max(240, "A class cannot be longer than 4 hours"),
     startsOn: dateOnly,
     endsOn: z.union([dateOnly, z.literal("")]).optional(),
   })

@@ -11,8 +11,6 @@ import {
 import { generateMonthlySessions, type GenerationConflict } from "@/features/schedules/actions";
 import { addDaysToDate } from "@/lib/datetime";
 import { calendarUrl } from "../scheduling";
-import { CreateClassDialog } from "./create-class-dialog";
-import type { CreateClassStudent, CreateClassTeacher } from "../queries";
 
 const ALL_TEACHERS = "all";
 const MAX_LISTED_CONFLICTS = 4;
@@ -23,22 +21,23 @@ type Props = {
   teacherId?: string;
   teachers: { id: string; firstName: string; lastName: string }[];
   generationMonth: { year: number; month: number; label: string };
-  createClass: {
-    students: CreateClassStudent[];
-    teachers: CreateClassTeacher[];
-    defaultDate: string;
-  };
   /** Carried through navigation so changing week does not drop an active move. */
   movingSessionId?: string;
 };
 
+/**
+ * Week navigation, the teacher filter and monthly generation.
+ *
+ * Creating a class is deliberately not here. A class needs a date and a time, and
+ * the calendar is where those are chosen — a button here would only lead to a
+ * second, blank date picker asking again for something the grid can answer.
+ */
 export function CalendarToolbar({
   weekStart,
   todayWeekStart,
   teacherId,
   teachers,
   generationMonth,
-  createClass,
   movingSessionId,
 }: Props) {
   const router = useRouter();
@@ -144,13 +143,6 @@ export function CalendarToolbar({
           <RefreshCw className="size-4" />
           {isGenerating ? "Generating..." : `Generate ${generationMonth.label}`}
         </Button>
-
-        <CreateClassDialog
-          students={createClass.students}
-          teachers={createClass.teachers}
-          defaultDate={createClass.defaultDate}
-          disabled={isBusy}
-        />
       </div>
 
       {conflicts.length > 0 && (

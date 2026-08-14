@@ -2,53 +2,67 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { createSession } from "../actions";
+import {
+  creationInputFor,
+  endTimeLabel,
+  formatSlotTime,
+  type CreationSlot,
+} from "../scheduling";
 import { DURATION_OPTIONS } from "../schemas";
 import type { CreateClassStudent, CreateClassTeacher } from "../queries";
 
-const DEFAULT_START_TIME = "09:00";
 const DEFAULT_DURATION = "60";
 
 type Props = {
+  /** The calendar position being created at, or null when the dialog is closed. */
+  slot: CreationSlot | null;
+  /** Whether that position has already passed, so the wording can say so. */
+  isPast: boolean;
   students: CreateClassStudent[];
   teachers: CreateClassTeacher[];
-  defaultDate: string;
-  disabled?: boolean;
+  onOpenChange: (open: boolean) => void;
 };
 
-export function CreateClassDialog({ students, teachers, defaultDate, disabled }: Props) {
-  const [open, setOpen] = useState(false);
-
+/**
+ * The rest of a new class, once the calendar has answered when.
+ *
+ * The date and time are not editable here on purpose: they were chosen on the
+ * calendar, where the surrounding week is visible, and repeating them as a date
+ * picker inside the modal only invites the two to disagree. Changing the time
+ * means closing this and picking another position.
+ */
+export function CreateClassDialog({
+  slot,
+  isPast,
+  students,
+  teachers,
+  onOpenChange,
+}: Props) {
   return (
-    <>
-      <Button disabled={disabled} onClick={() => setOpen(true)}>
-        <Plus className="size-4" /> Create class
-      </Button>
-
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-md">
-          {open && (
-            <CreateClassForm
-              students={students}
-              teachers={teachers}
-              defaultDate={defaultDate}
-              onDone={() => setOpen(false)}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
-    </>
+    <Dialog open={slot !== null} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        {slot && (
+          <CreateClassForm
+            key={`${slot.date}-${slot.startMinutes}`}
+            slot={slot}
+            isPast={isPast}
+            students={students}
+            teachers={teachers}
+            onDone={() => onOpenChange(false)}
+          />
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -75,24 +89,31 @@ function defaultTeacherFor(
 }
 
 function CreateClassForm({
+  slot,
+  isPast,
   students,
   teachers,
-  defaultDate,
   onDone,
-}: Omit<Props, "disabled"> & { onDone: () => void }) {
+}: {
+  slot: CreationSlot;
+  isPast: boolean;
+  students: CreateClassStudent[];
+  teachers: CreateClassTeacher[];
+  onDone: () => void;
+}) {
   const router = useRouter();
   const [studentId, setStudentId] = useState(students[0]?.id ?? "");
   const [teacherId, setTeacherId] = useState(() =>
     defaultTeacherFor(teachers, students[0])
   );
-  const [date, setDate] = useState(defaultDate);
-  const [startTime, setStartTime] = useState(DEFAULT_START_TIME);
   const [durationMinutes, setDurationMinutes] = useState(DEFAULT_DURATION);
   const [isPending, setIsPending] = useState(false);
 
   const student = students.find((candidate) => candidate.id === studentId);
   const eligibleTeachers = teachersForStudent(teachers, student);
   const canSubmit = Boolean(studentId && teacherId) && !isPending;
+
+  const endLabel = endTimeLabel(slot.startMinutes, Number(durationMinutes));
 
   function handleStudentChange(value: string) {
     setStudentId(value);
@@ -106,8 +127,7 @@ function CreateClassForm({
     const result = await createSession({
       studentId,
       teacherId,
-      date,
-      startTime,
+      ...creationInputFor(slot),
       durationMinutes: Number(durationMinutes),
     });
     setIsPending(false);
@@ -144,6 +164,22 @@ function CreateClassForm({
           A one-off individual class. It does not change any recurring schedule.
         </DialogDescription>
       </DialogHeader>
+
+      <dl className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
+        <div className="flex justify-between gap-4">
+          <dt className="text-muted-foreground">When</dt>
+          <dd className="text-right font-medium tabular-nums">
+            {slot.dayLabel} · {formatSlotTime(slot.startMinutes)} – {endLabel}
+          </dd>
+        </div>
+      </dl>
+
+      {isPast && (
+        <p className="rounded-md border border-dashed border-amber-300 px-3 py-2 text-xs text-amber-700">
+          This date has already passed. The class will be added as scheduled — mark it
+          completed once you have recorded who attended.
+        </p>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2 sm:col-span-2">
@@ -195,26 +231,6 @@ function CreateClassForm({
               No active teacher teaches {student.languageName}.
             </p>
           )}
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="create-class-date">Date</Label>
-          <Input
-            id="create-class-date"
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-          />
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="create-class-time">Start time</Label>
-          <Input
-            id="create-class-time"
-            type="time"
-            value={startTime}
-            onChange={(e) => setStartTime(e.target.value)}
-          />
         </div>
 
         <div className="space-y-2 sm:col-span-2">
