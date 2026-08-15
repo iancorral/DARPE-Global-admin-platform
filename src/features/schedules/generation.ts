@@ -45,9 +45,26 @@ export function expandSlotsForMonth(
   month: number,
   timezone: string = DEFAULT_TIMEZONE
 ): SessionOccurrence[] {
+  return expandSlotsForDates(slots, datesInMonth(year, month), timezone);
+}
+
+/**
+ * The same expansion over any set of calendar dates.
+ *
+ * Monthly generation asks for a month; booking a new series asks only about the
+ * days that series lands on, to find out whether a recurring pattern already
+ * claims the teacher then — including patterns whose sessions have not been
+ * generated yet. Both go through this, so "what does this pattern imply" has one
+ * answer in the product.
+ */
+export function expandSlotsForDates(
+  slots: GeneratableSlot[],
+  dates: string[],
+  timezone: string = DEFAULT_TIMEZONE
+): SessionOccurrence[] {
   const occurrences: SessionOccurrence[] = [];
 
-  for (const date of datesInMonth(year, month)) {
+  for (const date of dates) {
     const weekday = weekdayOfDate(date);
 
     for (const slot of slots) {

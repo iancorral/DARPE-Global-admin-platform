@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { visibleHourRange } from "../layout";
+import type { CreateMode } from "../calendar-return";
 import {
   SCHEDULING_INTERVAL_MINUTES,
   calendarMode,
@@ -52,6 +53,22 @@ type Props = {
    * filter. Empty when nothing is being moved.
    */
   movingTeacherBusy: TeacherBusyBlock[];
+  /**
+   * A create-class dialog the URL asks to reopen, already resolved to a position
+   * in this week. Set after adding a student mid-creation; null otherwise.
+   */
+  initialCreation: InitialCreation | null;
+  /** A student to preselect, from their profile's "Schedule class" link. */
+  preselectedStudentId: string | null;
+};
+
+export type InitialCreation = {
+  slot: CreationSlot;
+  mode: CreateMode;
+  studentId: string | null;
+  /** Restored from the URL after adding a student, or null for the defaults. */
+  durationMinutes: number | null;
+  endsOn: string | null;
 };
 
 /**
@@ -72,17 +89,30 @@ export function WeekCalendar({
   teacherId,
   movingSession,
   movingTeacherBusy,
+  initialCreation,
+  preselectedStudentId,
 }: Props) {
   const router = useRouter();
   const [selected, setSelected] = useState<CalendarSession | null>(null);
   const [active, setActive] = useState<DestinationSlot | null>(null);
   const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
-  const [creating, setCreating] = useState<CreationSlot | null>(null);
+  // Opens straight onto the position the round trip started from, so coming back
+  // from adding a student lands exactly where creating one was interrupted.
+  const [creating, setCreating] = useState<CreationSlot | null>(
+    initialCreation?.slot ?? null
+  );
   const [isSaving, setIsSaving] = useState(false);
   // The agenda remembers which day of the week is open, not which date. Paging to
   // another week mid-move then keeps you on the same weekday instead of throwing
   // you back to the start of the week.
-  const [selectedDayIndex, setSelectedDayIndex] = useState<number | null>(null);
+  const [selectedDayIndex, setSelectedDayIndex] = useState<number | null>(
+    initialCreation
+      ? days.findIndex((day) => day.date === initialCreation.slot.date)
+      : null
+  );
+  // The reopened dialog is a one-off: once it has been dealt with the position
+  // leaves the address bar, so reloading the page does not reopen it.
+  const hasClearedUrlContext = useRef(false);
 
   const isMoving = movingSession !== null;
   // Move mode comes from the URL and owns every position while it is open, so
@@ -142,6 +172,11 @@ export function WeekCalendar({
   function closeCreation() {
     const position = creating;
     setCreating(null);
+
+    if (initialCreation && !hasClearedUrlContext.current) {
+      hasClearedUrlContext.current = true;
+      router.replace(calendarUrl({ week: weekStart, teacher: teacherId }));
+    }
 
     if (!position) return;
     requestAnimationFrame(() => {
@@ -271,6 +306,12 @@ export function WeekCalendar({
         isPast={creating !== null && creating.date < today}
         students={students}
         teachers={teachers}
+        weekStart={weekStart}
+        teacherFilterId={teacherId}
+        initialMode={initialCreation?.mode}
+        initialStudentId={initialCreation?.studentId ?? preselectedStudentId}
+        initialDurationMinutes={initialCreation?.durationMinutes}
+        initialEndsOn={initialCreation?.endsOn}
         onOpenChange={(open) => !open && closeCreation()}
       />
 

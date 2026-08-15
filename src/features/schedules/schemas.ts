@@ -1,5 +1,7 @@
 import { z } from "zod";
-import { alignedStartTimeSchema } from "@/features/sessions/schemas";
+import { alignedStartTimeSchema, offeredDurationSchema } from "@/features/sessions/schemas";
+import { addDaysToDate, isCalendarDate } from "@/lib/datetime";
+import { MAX_SERIES_SPAN_DAYS, MAX_SERIES_WEEKS } from "./series";
 
 export const WEEKDAYS = [
   { value: 1, label: "Monday" },
@@ -28,6 +30,12 @@ export const MONTHS = [
 
 const dateOnly = z.string("Choose a date").regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD format");
 
+/**
+ * A date that exists, not just one shaped like a date. Series ranges are counted
+ * and added to, and "2026-02-31" would take that arithmetic somewhere invalid.
+ */
+const realDateOnly = dateOnly.refine(isCalendarDate, "Choose a date that exists");
+
 export const scheduleSlotSchema = z
   .object({
     studentId: z.string("Select a student").min(1, "Select a student"),
@@ -52,6 +60,43 @@ export const scheduleSlotSchema = z
   });
 
 export type ScheduleSlotInput = z.infer<typeof scheduleSlotSchema>;
+
+/**
+ * A weekly series created from a calendar position.
+ *
+ * Deliberately stricter than `scheduleSlotSchema`, which still has to accept the
+ * recurring slots the product created before this flow existed. A new series has
+ * an end date — there is no "never ends" from the calendar — starts on the hour or
+ * half hour like every other new class, and uses a duration the form offers.
+ *
+ * What is absent matters as much as what is here. There is no weekday, no
+ * language and no list of occurrences: the weekday follows from `startsOn`, the
+ * language from the student, and the occurrences from the range. A client that
+ * sends them is simply ignored, so a series can never claim to repeat on a day it
+ * does not, or in a language the student does not study.
+ */
+export const weeklySeriesSchema = z
+  .object({
+    studentId: z.string("Select a student").min(1, "Select a student"),
+    teacherId: z.string("Select a teacher").min(1, "Select a teacher"),
+    startsOn: realDateOnly,
+    endsOn: realDateOnly,
+    startTime: alignedStartTimeSchema,
+    durationMinutes: offeredDurationSchema,
+  })
+  .refine((series) => series.endsOn >= series.startsOn, {
+    message: "The last class cannot be before the first one",
+    path: ["endsOn"],
+  })
+  .refine(
+    (series) => series.endsOn <= addDaysToDate(series.startsOn, MAX_SERIES_SPAN_DAYS),
+    {
+      message: `A weekly series can run for at most ${MAX_SERIES_WEEKS} weeks. Choose an earlier end date.`,
+      path: ["endsOn"],
+    }
+  );
+
+export type WeeklySeriesInput = z.infer<typeof weeklySeriesSchema>;
 
 export const generateMonthSchema = z.object({
   year: z.coerce.number().int().min(2020).max(2100),

@@ -18,6 +18,21 @@ export const alignedStartTimeSchema = z
   .refine(isAlignedStartTime, ALIGNED_START_MESSAGE);
 
 /**
+ * A duration the calendar actually offers, for records being created there.
+ *
+ * Shared by a single class and by a weekly series so both accept exactly the same
+ * lengths. Existing records are deliberately not held to it — see the wider bounds
+ * on `updateSessionSchedulingSchema`.
+ */
+export const offeredDurationSchema = z.coerce
+  .number("Choose one of the offered durations")
+  .int("Choose one of the offered durations")
+  .refine(
+    (value) => (DURATION_OPTIONS as readonly number[]).includes(value),
+    "Choose one of the offered durations"
+  );
+
+/**
  * The first validation message, for actions that surface why input was rejected.
  *
  * Safe to show, but only because every field of the schemas used with it carries
@@ -29,10 +44,28 @@ export function firstValidationMessage(error: z.ZodError, fallback: string): str
   return error.issues[0]?.message ?? fallback;
 }
 
+/**
+ * The calendar's own URL surface.
+ *
+ * `week`, `teacher` and `moving` are the calendar's state. `date`, `time`, `mode`
+ * and `student` are the create-class dialog's, and exist so that leaving the
+ * calendar to add a student can come back to exactly the position it left from.
+ *
+ * The creation params are only accepted as strings here and given their meaning by
+ * `calendarCreateIntent`, which validates each one on its own. That way one
+ * malformed value degrades into browsing that week rather than throwing away the
+ * week and the teacher filter with it.
+ */
 export const calendarParamsSchema = z.object({
   week: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   teacher: z.string().min(1).optional(),
   moving: z.string().min(1).optional(),
+  date: z.string().optional(),
+  time: z.string().optional(),
+  mode: z.string().optional(),
+  student: z.string().optional(),
+  duration: z.string().optional(),
+  until: z.string().optional(),
 });
 
 /**

@@ -401,18 +401,39 @@ export function buildSchedulingUpdate(params: SchedulingUpdate): SchedulingUpdat
   };
 }
 
+/** The only page any calendar link may point at. */
+export const CALENDAR_PATH = "/calendar";
+
 /**
  * A calendar link. Move mode lives in the URL so it survives navigating to another
  * week, and so cancelling it is just going back to the calendar without it.
+ *
+ * The creation params work the same way: a position, a mode and a student are
+ * enough to reopen the create-class dialog where it was left, which is what makes
+ * adding a student mid-creation a round trip rather than a dead end. The path is a
+ * constant and every value goes through `URLSearchParams`, so no caller can steer
+ * this at another host.
  */
 export function calendarUrl(params: {
   week: string;
   teacher?: string;
   moving?: string;
+  date?: string;
+  time?: string;
+  mode?: string;
+  student?: string;
+  duration?: string;
+  until?: string;
 }): string {
   const query = new URLSearchParams({ week: params.week });
   if (params.teacher) query.set("teacher", params.teacher);
   if (params.moving) query.set("moving", params.moving);
+  if (params.date) query.set("date", params.date);
+  if (params.time) query.set("time", params.time);
+  if (params.mode) query.set("mode", params.mode);
+  if (params.student) query.set("student", params.student);
+  if (params.duration) query.set("duration", params.duration);
+  if (params.until) query.set("until", params.until);
 
-  return `/calendar?${query.toString()}`;
+  return `${CALENDAR_PATH}?${query.toString()}`;
 }

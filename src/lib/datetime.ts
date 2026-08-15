@@ -22,6 +22,21 @@ export function parseDateOnly(date: string): Date {
   return new Date(`${date}T00:00:00Z`);
 }
 
+/**
+ * Whether a string is a calendar date that exists.
+ *
+ * The shape is not enough: "2026-02-31" matches every YYYY-MM-DD pattern and is
+ * still not a day. Date arithmetic on one throws, so anything arriving from a form
+ * or the address bar is checked here before it is counted or added to.
+ */
+export function isCalendarDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+
+  const parsed = parseDateOnly(value);
+
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
 /** Weekday (0 = Sunday) of a "YYYY-MM-DD" calendar date. */
 export function weekdayOfDate(date: string): number {
   return new Date(`${date}T00:00:00Z`).getUTCDay();

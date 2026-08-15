@@ -13,19 +13,39 @@ import {
 import {
   CONFLICT_LOOKBACK_MINUTES,
   partitionByTeacherAvailability,
+  endOf,
+  type TeacherTimeRange,
 } from "@/features/sessions/conflicts";
-import { ELIGIBLE_STUDENT_STATUSES } from "@/features/sessions/eligibility";
+import {
+  ELIGIBLE_STUDENT_STATUSES,
+  checkManualClassEligibility,
+} from "@/features/sessions/eligibility";
 import { TEACHER_OCCUPYING_STATUSES } from "@/features/sessions/lifecycle";
 import { firstValidationMessage } from "@/features/sessions/schemas";
-import { expandSlotsForMonth, occurrenceKey } from "./generation";
+import {
+  inSchedulingTransaction,
+  type ActionResult,
+} from "@/features/sessions/transaction";
+import { expandSlotsForDates, expandSlotsForMonth, occurrenceKey } from "./generation";
+import {
+  buildWeeklySeries,
+  planWeeklySeries,
+  seriesConflictMessage,
+  seriesSessionRecords,
+  weeklyOccurrenceDates,
+  type SeriesOccurrence,
+} from "./series";
 import {
   generateMonthSchema,
   scheduleSlotSchema,
+  weeklySeriesSchema,
   type GenerateMonthInput,
   type ScheduleSlotInput,
+  type WeeklySeriesInput,
 } from "./schemas";
+import type { Prisma } from "@/generated/prisma/client";
 
-export type ActionResult = { success: true } | { success: false; error: string };
+export type { ActionResult };
 
 export type GenerationConflict = {
   studentName: string;
@@ -85,6 +105,254 @@ export async function deactivateScheduleSlot(id: string): Promise<ActionResult> 
   });
 
   revalidatePath(`/students/${slot.studentId}`);
+  return { success: true };
+}
+
+/**
+ * When this teacher is already booked over the days a new series would land on.
+ *
+ * Two different things can occupy a teacher, and both have to count:
+ *
+ * 1. Classes that exist. Cancelled ones are left out, because they free the time.
+ * 2. Recurring patterns that will produce classes. A slot generated no further
+ *    than last month still means its student's Tuesday belongs to them, and
+ *    booking over it would only surface next time somebody generates a month.
+ *
+ * A pattern whose class for that date already exists is dropped from the second
+ * list: the real record is the authority, and it may since have been moved or
+ * cancelled. Counting the pattern as well would block the time a rescheduled class
+ * has just left.
+ *
+ * Runs on the caller's transaction client, so the availability it reports and the
+ * write it authorises cannot be separated by another coordinator's booking.
+ */
+async function findTeacherOccupancy(
+  client: Prisma.TransactionClient,
+  teacherId: string,
+  candidates: SeriesOccurrence[],
+  dates: string[]
+): Promise<TeacherTimeRange[]> {
+  const windowStart = Math.min(...candidates.map((candidate) => candidate.startsAt.getTime()));
+  const windowEnd = Math.max(...candidates.map((candidate) => endOf(candidate).getTime()));
+  const firstDate = dates[0] ?? "";
+  const lastDate = dates[dates.length - 1] ?? firstDate;
+
+  const [sessions, slots] = await Promise.all([
+    client.classSession.findMany({
+      where: {
+        teacherId,
+        status: { in: TEACHER_OCCUPYING_STATUSES },
+        startsAt: {
+          gte: new Date(windowStart - CONFLICT_LOOKBACK_MINUTES * 60_000),
+          lt: new Date(windowEnd),
+        },
+      },
+      select: { startsAt: true, durationMinutes: true },
+    }),
+    // The same population monthly generation would expand: active patterns, active
+    // teacher, and a student who may still be given classes.
+    client.scheduleSlot.findMany({
+      where: {
+        teacherId,
+        active: true,
+        student: { status: { in: ELIGIBLE_STUDENT_STATUSES } },
+        startsOn: { lte: parseDateOnly(lastDate) },
+        OR: [{ endsOn: null }, { endsOn: { gte: parseDateOnly(firstDate) } }],
+      },
+      select: {
+        id: true,
+        weekday: true,
+        startTime: true,
+        durationMinutes: true,
+        startsOn: true,
+        endsOn: true,
+        teacherId: true,
+        student: { select: { id: true, languageId: true } },
+      },
+    }),
+  ]);
+
+  const implied = expandSlotsForDates(slots, dates);
+
+  const generated =
+    implied.length === 0
+      ? []
+      : await client.classSession.findMany({
+          where: {
+            scheduleSlotId: { in: [...new Set(implied.map((o) => o.scheduleSlotId))] },
+            slotOccurrenceOn: { in: dates.map(parseDateOnly) },
+          },
+          select: { scheduleSlotId: true, slotOccurrenceOn: true },
+        });
+
+  const alreadyGenerated = new Set(
+    generated.flatMap((session) =>
+      session.scheduleSlotId && session.slotOccurrenceOn
+        ? [occurrenceKey(session.scheduleSlotId, formatDateOnly(session.slotOccurrenceOn))]
+        : []
+    )
+  );
+
+  return [
+    ...sessions.map((session) => ({
+      teacherId,
+      startsAt: session.startsAt,
+      durationMinutes: session.durationMinutes,
+    })),
+    ...implied
+      .filter(
+        (occurrence) =>
+          !alreadyGenerated.has(
+            occurrenceKey(occurrence.scheduleSlotId, occurrence.occurrenceOn)
+          )
+      )
+      .map((occurrence) => ({
+        teacherId,
+        startsAt: occurrence.startsAt,
+        durationMinutes: occurrence.durationMinutes,
+      })),
+  ];
+}
+
+/**
+ * Creates a finite weekly series from a calendar position: the recurring pattern
+ * and every class it implies, in one step.
+ *
+ * The client sends a range, not a series. The weekday, the occurrence dates, the
+ * language and the eligibility of everyone involved are all worked out here from
+ * the records themselves, so the only thing the calendar decides is when and who.
+ *
+ * All or nothing. Every week is checked against the teacher's existing classes,
+ * their other recurring patterns and the rest of this series, and a single clash
+ * refuses the whole thing with the dates that clash. A half-created series is
+ * worse than none: staff would have no way to tell which weeks the student
+ * actually has.
+ *
+ * The classes are written here rather than left for monthly generation, so the
+ * series appears in every affected week immediately.
+ */
+export async function createWeeklySeries(input: WeeklySeriesInput): Promise<ActionResult> {
+  await requireUser();
+
+  const parsed = weeklySeriesSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      success: false,
+      error: firstValidationMessage(parsed.error, "Please check the form and try again."),
+    };
+  }
+
+  const { studentId, teacherId, startsOn, endsOn, startTime, durationMinutes } = parsed.data;
+
+  // Expanded from the validated range, never taken from the client: whatever the
+  // dialog previewed, this is the series that gets booked.
+  const dates = weeklyOccurrenceDates(startsOn, endsOn);
+  if (dates.length === 0) {
+    return { success: false, error: "That date range contains no classes." };
+  }
+
+  const result = await inSchedulingTransaction(async (tx) => {
+    const [student, teacher] = await Promise.all([
+      tx.student.findUnique({
+        where: { id: studentId },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          status: true,
+          languageId: true,
+          language: { select: { name: true } },
+        },
+      }),
+      tx.teacher.findUnique({
+        where: { id: teacherId },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          active: true,
+          languages: { select: { languageId: true } },
+        },
+      }),
+    ]);
+
+    if (!student) {
+      return { success: false, error: "That student no longer exists." };
+    }
+
+    if (!teacher) {
+      return { success: false, error: "That teacher no longer exists." };
+    }
+
+    // The same rule a single class goes through: an active or trial student, and
+    // an active teacher who teaches their language.
+    const eligibility = checkManualClassEligibility({
+      student: {
+        name: `${student.firstName} ${student.lastName}`,
+        status: student.status,
+        languageId: student.languageId,
+      },
+      teacher: {
+        name: `${teacher.firstName} ${teacher.lastName}`,
+        active: teacher.active,
+        languageIds: teacher.languages.map((entry) => entry.languageId),
+      },
+      languageName: student.language.name,
+    });
+
+    if (!eligibility.ok) {
+      return { success: false, error: eligibility.error };
+    }
+
+    const draft = buildWeeklySeries({
+      startsOn,
+      endsOn,
+      startTime,
+      durationMinutes,
+      teacherId: teacher.id,
+      student: { id: student.id, languageId: student.languageId },
+    });
+
+    const occupied = await findTeacherOccupancy(tx, teacher.id, draft.occurrences, dates);
+    const plan = planWeeklySeries(draft.occurrences, occupied);
+
+    if (!plan.ok) {
+      return {
+        success: false,
+        error: seriesConflictMessage(
+          teacher.firstName,
+          plan.conflicts.map(
+            (conflict) =>
+              `${formatInZone(conflict.startsAt, DEFAULT_TIMEZONE, "MMM d")} at ` +
+              `${formatInZone(conflict.startsAt, DEFAULT_TIMEZONE)}`
+          )
+        ),
+      };
+    }
+
+    const slot = await tx.scheduleSlot.create({ data: draft.slot, select: { id: true } });
+
+    const sessions = await tx.classSession.createManyAndReturn({
+      data: seriesSessionRecords(slot.id, plan.occurrences),
+      select: { id: true },
+    });
+
+    await tx.classParticipant.createMany({
+      data: sessions.map((session) => ({
+        classSessionId: session.id,
+        studentId: student.id,
+      })),
+    });
+
+    return { success: true };
+  });
+
+  if (!result.success) {
+    return result;
+  }
+
+  revalidatePath("/calendar");
+  revalidatePath(`/students/${studentId}`);
   return { success: true };
 }
 

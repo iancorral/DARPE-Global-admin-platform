@@ -13,6 +13,10 @@ import {
 import {
   Form, FormControl, FormField, FormItem, FormLabel, FormMessage,
 } from "@/components/ui/form";
+import {
+  calendarReturnUrl,
+  type CalendarReturnContext,
+} from "@/features/sessions/calendar-return";
 import { createStudent } from "../actions";
 import { studentFormSchema, MODALITIES, type StudentFormInput } from "../schemas";
 
@@ -26,9 +30,15 @@ const MODALITY_LABELS: Record<(typeof MODALITIES)[number], string> = {
 type Props = {
   languages: { id: string; name: string }[];
   teachers: { id: string; firstName: string; lastName: string }[];
+  /**
+   * Where on the calendar this student is being added from, when scheduling a
+   * class is what led here. The form itself is unchanged either way — it gains no
+   * scheduling fields — only where it goes afterwards.
+   */
+  calendarReturn?: CalendarReturnContext | null;
 };
 
-export function StudentForm({ languages, teachers }: Props) {
+export function StudentForm({ languages, teachers, calendarReturn }: Props) {
   const router = useRouter();
 
   const form = useForm<StudentFormInput>({
@@ -49,12 +59,23 @@ export function StudentForm({ languages, teachers }: Props) {
     }
 
     toast.success("Student created");
-    router.push("/students");
+
+    // Back to the exact calendar position this started from, with the new student
+    // ready to be scheduled. Nothing is created for them automatically: the class
+    // still has to be reviewed and submitted.
+    router.push(calendarReturn ? calendarReturnUrl(calendarReturn, result.id) : "/students");
   }
 
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="max-w-lg space-y-6">
+        {calendarReturn && (
+          <p className="rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
+            Adding a student for the class on {calendarReturn.date} at {calendarReturn.time}.
+            You will come back to that time once they are created.
+          </p>
+        )}
+
         <div className="grid gap-4 sm:grid-cols-2">
           <FormField control={form.control} name="firstName" render={({ field }) => (
             <FormItem>
@@ -172,7 +193,15 @@ export function StudentForm({ languages, teachers }: Props) {
           <Button type="submit" disabled={form.formState.isSubmitting}>
             {form.formState.isSubmitting ? "Saving..." : "Create student"}
           </Button>
-          <Button type="button" variant="outline" onClick={() => router.back()}>Cancel</Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() =>
+              calendarReturn ? router.push(calendarReturnUrl(calendarReturn)) : router.back()
+            }
+          >
+            Cancel
+          </Button>
         </div>
       </form>
     </Form>

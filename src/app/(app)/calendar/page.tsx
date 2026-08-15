@@ -5,8 +5,16 @@ import {
   getWeekSessions,
 } from "@/features/sessions/queries";
 import { calendarParamsSchema } from "@/features/sessions/schemas";
+import {
+  calendarCreateIntent,
+  preselectedStudentId,
+} from "@/features/sessions/calendar-return";
 import { CalendarToolbar } from "@/features/sessions/components/calendar-toolbar";
-import { WeekCalendar, type CalendarDay } from "@/features/sessions/components/week-calendar";
+import {
+  WeekCalendar,
+  type CalendarDay,
+  type InitialCreation,
+} from "@/features/sessions/components/week-calendar";
 import { getScheduleFormOptions } from "@/features/schedules/queries";
 import { MONTHS } from "@/features/schedules/schemas";
 import {
@@ -23,7 +31,7 @@ const VISIBLE_DAYS = 6;
 export default async function CalendarPage({
   searchParams,
 }: {
-  searchParams: Promise<{ week?: string; teacher?: string; moving?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = calendarParamsSchema.safeParse(await searchParams);
   const today = todayInZone(DEFAULT_TIMEZONE);
@@ -63,6 +71,36 @@ export default async function CalendarPage({
 
   const visibleDates = new Set(days.map((day) => day.date));
   const hiddenCount = sessions.filter((session) => !visibleDates.has(session.date)).length;
+
+  // A student id from the address bar is only a suggestion: it has to be one of
+  // the students who may actually be given a class, or the form ignores it.
+  const requestedStudentId = params.success
+    ? preselectedStudentId(params.data.student)
+    : null;
+  const preselected =
+    createClassOptions.students.find((student) => student.id === requestedStudentId)?.id ??
+    null;
+
+  // The dialog only reopens at a position this week actually shows, and never
+  // while a class is being moved — a position means one thing at a time.
+  const intent = params.success ? calendarCreateIntent(params.data) : null;
+  const intentDay = intent ? days.find((day) => day.date === intent.date) : undefined;
+  const initialCreation: InitialCreation | null =
+    intent && intentDay
+      ? {
+          slot: {
+            date: intent.date,
+            startMinutes: intent.startMinutes,
+            dayLabel: `${intentDay.label} ${intentDay.dayNumber}`,
+          },
+          mode: intent.mode,
+          studentId:
+            createClassOptions.students.find((student) => student.id === intent.studentId)
+              ?.id ?? null,
+          durationMinutes: intent.durationMinutes,
+          endsOn: intent.endsOn,
+        }
+      : null;
 
   const weekEnd = addDaysToDate(weekStart, VISIBLE_DAYS - 1);
   const rangeLabel = `${formatInZone(parseDateOnly(weekStart), "UTC", "MMM d")} – ${formatInZone(
@@ -107,6 +145,8 @@ export default async function CalendarPage({
         teacherId={teacherId}
         movingSession={movingSession}
         movingTeacherBusy={movingTeacherBusy}
+        initialCreation={initialCreation}
+        preselectedStudentId={preselected}
       />
 
       {hiddenCount > 0 && (

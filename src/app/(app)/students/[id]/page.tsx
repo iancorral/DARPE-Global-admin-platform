@@ -1,11 +1,15 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, CalendarPlus } from "lucide-react";
 import { getStudentById } from "@/features/students/queries";
 import { getScheduleFormOptions } from "@/features/schedules/queries";
+import { isEligibleStudent } from "@/features/sessions/eligibility";
+import { scheduleForStudentUrl } from "@/features/sessions/calendar-return";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScheduleManager } from "@/features/schedules/components/schedule-manager";
+import { DEFAULT_TIMEZONE, startOfWeekDate, todayInZone } from "@/lib/datetime";
 
 export default async function StudentProfilePage({
   params,
@@ -18,6 +22,7 @@ export default async function StudentProfilePage({
   if (!student) notFound();
 
   const { teachers } = await getScheduleFormOptions();
+  const currentWeekStart = startOfWeekDate(todayInZone(DEFAULT_TIMEZONE));
 
   return (
     <div className="p-4 lg:p-8">
@@ -28,17 +33,35 @@ export default async function StudentProfilePage({
         <ArrowLeft className="size-4" /> All students
       </Link>
 
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold tracking-tight">
-          {student.firstName} {student.lastName}
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {student.language.name}
-          {student.level ? ` · ${student.level}` : ""} ·{" "}
-          {student.primaryTeacher
-            ? `${student.primaryTeacher.firstName} ${student.primaryTeacher.lastName}`
-            : "Unassigned"}
-        </p>
+      <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {student.firstName} {student.lastName}
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {student.language.name}
+            {student.level ? ` · ${student.level}` : ""} ·{" "}
+            {student.primaryTeacher
+              ? `${student.primaryTeacher.firstName} ${student.primaryTeacher.lastName}`
+              : "Unassigned"}
+          </p>
+        </div>
+
+        {/*
+          Opens the calendar with this student ready to be scheduled. It stops
+          there on purpose: a class needs a time, and the calendar is where a time
+          is chosen with the week in view.
+        */}
+        {isEligibleStudent(student.status) && (
+          <Button
+            variant="outline"
+            render={
+              <Link href={scheduleForStudentUrl(currentWeekStart, student.id)}>
+                <CalendarPlus className="size-4" /> Schedule class
+              </Link>
+            }
+          />
+        )}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
