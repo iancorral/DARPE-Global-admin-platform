@@ -9,6 +9,7 @@ import {
   type DestinationState,
   type MinuteRange,
 } from "../scheduling";
+import { moveDestinationId } from "../element-ids";
 
 export type DestinationSlot = {
   date: string;
@@ -36,11 +37,16 @@ type Props = {
   tabbable: DestinationSlot | null;
   disabled: boolean;
   onActivate: (slot: DestinationSlot) => void;
-  onSelect: (slot: DestinationSlot) => void;
+  /** The button is handed over so focus can return to this exact control. */
+  onSelect: (slot: DestinationSlot, trigger: HTMLElement) => void;
 };
 
+/**
+ * This grid's id for a destination. Scoped to the grid, because the agenda offers
+ * the same destinations and both trees are mounted at once.
+ */
 export function slotDomId(slot: DestinationSlot): string {
-  return `move-slot-${slot.date}-${slot.startMinutes}`;
+  return moveDestinationId("grid", slot.date, slot.startMinutes);
 }
 
 /**
@@ -93,7 +99,7 @@ export function MoveDestinations({
             aria-label={`Move to ${dayLabel} at ${formatSlotTime(startMinutes)} — ${STATE_LABEL[state]}`}
             onMouseEnter={() => onActivate(slot)}
             onFocus={() => onActivate(slot)}
-            onClick={() => onSelect(slot)}
+            onClick={(event) => onSelect(slot, event.currentTarget)}
             className={cn(
               "absolute right-0 left-0 z-20 border-t border-dashed transition-colors",
               "focus-visible:ring-2 focus-visible:ring-violet-600 focus-visible:ring-inset focus-visible:outline-none",

@@ -17,8 +17,14 @@ import {
   calendarReturnUrl,
   type CalendarReturnContext,
 } from "@/features/sessions/calendar-return";
-import { createStudent } from "../actions";
-import { studentFormSchema, MODALITIES, type StudentFormInput } from "../schemas";
+import { createStudent, updateStudent } from "../actions";
+import {
+  studentFormSchema,
+  MODALITIES,
+  STUDENT_STATUSES,
+  STUDENT_STATUS_LABELS,
+  type StudentFormInput,
+} from "../schemas";
 
 const MODALITY_LABELS: Record<(typeof MODALITIES)[number], string> = {
   ADVISORY: "Advisory (per hour)",
@@ -29,21 +35,31 @@ const MODALITY_LABELS: Record<(typeof MODALITIES)[number], string> = {
 
 type Props = {
   languages: { id: string; name: string }[];
-  teachers: { id: string; firstName: string; lastName: string }[];
+  /**
+   * Active teachers, plus — when editing — the student's current primary teacher
+   * even if they have gone inactive, so opening the form never silently drops an
+   * assignment that is still on the record.
+   */
+  teachers: { id: string; firstName: string; lastName: string; inactive?: boolean }[];
   /**
    * Where on the calendar this student is being added from, when scheduling a
    * class is what led here. The form itself is unchanged either way — it gains no
    * scheduling fields — only where it goes afterwards.
    */
   calendarReturn?: CalendarReturnContext | null;
+  /**
+   * When present, the form edits this student instead of creating one. The same
+   * fields and the same schema; only the action and the destination change.
+   */
+  student?: { id: string } & StudentFormInput;
 };
 
-export function StudentForm({ languages, teachers, calendarReturn }: Props) {
+export function StudentForm({ languages, teachers, calendarReturn, student }: Props) {
   const router = useRouter();
 
   const form = useForm<StudentFormInput>({
     resolver: zodResolver(studentFormSchema),
-    defaultValues: {
+    defaultValues: student ?? {
       firstName: "", lastName: "", email: "", phone: "",
       languageId: "", primaryTeacherId: "", modality: "INDIVIDUAL_EXTENSIVE",
       status: "ACTIVE", level: "", goal: "",
@@ -51,6 +67,19 @@ export function StudentForm({ languages, teachers, calendarReturn }: Props) {
   });
 
   async function onSubmit(values: StudentFormInput) {
+    if (student) {
+      const result = await updateStudent({ id: student.id, ...values });
+
+      if (!result.success) {
+        toast.error(result.error);
+        return;
+      }
+
+      toast.success("Student updated");
+      router.push(`/students/${student.id}`);
+      return;
+    }
+
     const result = await createStudent(values);
 
     if (!result.success) {
@@ -135,7 +164,10 @@ export function StudentForm({ languages, teachers, calendarReturn }: Props) {
           <FormItem>
             <FormLabel>Primary teacher <span className="text-muted-foreground">(optional)</span></FormLabel>
             <Select
-                items={teachers.map((t) => ({ label: `${t.firstName} ${t.lastName}`, value: t.id }))}
+                items={teachers.map((t) => ({
+                  label: `${t.firstName} ${t.lastName}${t.inactive ? " (inactive)" : ""}`,
+                  value: t.id,
+                }))}
                 onValueChange={field.onChange}
                 value={field.value}
                 >
@@ -144,7 +176,10 @@ export function StudentForm({ languages, teachers, calendarReturn }: Props) {
               </FormControl>
               <SelectContent>
                 {teachers.map((t) => (
-                  <SelectItem key={t.id} value={t.id}>{t.firstName} {t.lastName}</SelectItem>
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.firstName} {t.lastName}
+                    {t.inactive ? " (inactive)" : ""}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -173,6 +208,31 @@ export function StudentForm({ languages, teachers, calendarReturn }: Props) {
           </FormItem>
         )} />
 
+        <FormField control={form.control} name="status" render={({ field }) => (
+          <FormItem>
+            <FormLabel>Status</FormLabel>
+            <Select
+                items={STUDENT_STATUSES.map((s) => ({ label: STUDENT_STATUS_LABELS[s], value: s }))}
+                onValueChange={field.onChange}
+                value={field.value}
+                >
+              <FormControl>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+              </FormControl>
+              <SelectContent>
+                {STUDENT_STATUSES.map((s) => (
+                  <SelectItem key={s} value={s}>{STUDENT_STATUS_LABELS[s]}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Only active and trial students can be given new classes. Existing classes
+              are kept either way.
+            </p>
+            <FormMessage />
+          </FormItem>
+        )} />
+
         <FormField control={form.control} name="level" render={({ field }) => (
           <FormItem>
             <FormLabel>Level <span className="text-muted-foreground">(optional)</span></FormLabel>
@@ -191,7 +251,11 @@ export function StudentForm({ languages, teachers, calendarReturn }: Props) {
 
         <div className="flex gap-3">
           <Button type="submit" disabled={form.formState.isSubmitting}>
-            {form.formState.isSubmitting ? "Saving..." : "Create student"}
+            {form.formState.isSubmitting
+              ? "Saving..."
+              : student
+                ? "Save changes"
+                : "Create student"}
           </Button>
           <Button
             type="button"

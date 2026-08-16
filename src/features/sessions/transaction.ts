@@ -2,7 +2,9 @@ import "server-only";
 import { db } from "@/lib/db";
 import { Prisma } from "@/generated/prisma/client";
 
-export type ActionResult = { success: true } | { success: false; error: string };
+export type ActionFailure = { success: false; error: string };
+
+export type ActionResult = { success: true } | ActionFailure;
 
 /** Prisma's code for a transaction rolled back because it could not be serialized. */
 const SERIALIZATION_FAILURE = "P2034";
@@ -28,9 +30,9 @@ const CONCURRENT_UPDATE_ERROR =
  * a single class, a move, a reopened class and a whole weekly series alike — and
  * a "use server" module cannot export a helper for the others to share.
  */
-export async function inSchedulingTransaction(
-  run: (tx: Prisma.TransactionClient) => Promise<ActionResult>
-): Promise<ActionResult> {
+export async function inSchedulingTransaction<T>(
+  run: (tx: Prisma.TransactionClient) => Promise<T>
+): Promise<T | ActionFailure> {
   try {
     return await db.$transaction(run, { isolationLevel: "Serializable" });
   } catch (error) {

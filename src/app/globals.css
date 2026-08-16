@@ -4,6 +4,17 @@
 
 @custom-variant dark (&:is(.dark *));
 
+@theme {
+  /*
+   * DARPE's editorial serif, for page titles, the wordmark and the dashboard
+   * greeting only — never body text, labels or controls. A system stack rather
+   * than a webfont: the brand's official display face has not been confirmed
+   * yet, and these faces match the concept the client approved without
+   * shipping a single font byte.
+   */
+  --font-serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, ui-serif, serif;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -49,38 +60,63 @@
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  /*
+   * The fixed mobile navigation, in one place.
+   *
+   * Two things must agree about it: the space a page reserves at the bottom, and
+   * the height a bounded page subtracts. Writing `4rem` in both spots is how they
+   * drift apart, so both read this instead. `--app-nav-space` folds in the device
+   * safe area, which is 0 unless the viewport is `viewport-fit=cover`.
+   */
+  --app-nav-height: 4rem;
+  --app-nav-space: calc(var(--app-nav-height) + env(safe-area-inset-bottom, 0px));
+
+  /*
+   * DARPE brand palette, from the client presentation:
+   *   deep violet #482D79 · mauve #9968AE · medium lavender #B482CA
+   *   pale lavender #ECDFF2 · lavender gray #B4A8BA · warm near-white #FAF7FC
+   *
+   * Contrast decides each color's job (ratios measured against the surfaces
+   * they sit on): deep violet carries text and primary actions (10.9:1 on
+   * white, 8.5:1 on pale lavender). Mauve (4.2:1) and lavender gray (2.6:1)
+   * fail AA for normal text, so they never carry words — lavender gray tints
+   * borders, mauve is reserved for large decorative use only. Focus rings keep
+   * the brighter violet #7C3AED: on these light surfaces it reads more than 5:1,
+   * well past the 3:1 non-text minimum, where deep violet's ring would be
+   * harder to spot against its own darker controls.
+   */
+  --background: #faf7fc;
+  --foreground: #2a2137;
+  --card: #ffffff;
+  --card-foreground: #2a2137;
+  --popover: #ffffff;
+  --popover-foreground: #2a2137;
+  --primary: #482d79;
+  --primary-foreground: #faf7fc;
+  --secondary: #ecdff2;
+  --secondary-foreground: #482d79;
+  --muted: #f3ecf7;
+  --muted-foreground: #655d6e;
+  --accent: #ecdff2;
+  --accent-foreground: #482d79;
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --border: #e5dbec;
+  --input: #e5dbec;
+  --ring: #7c3aed;
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar: #ffffff;
+  --sidebar-foreground: #2a2137;
+  --sidebar-primary: #482d79;
+  --sidebar-primary-foreground: #faf7fc;
+  --sidebar-accent: #ecdff2;
+  --sidebar-accent-foreground: #482d79;
+  --sidebar-border: #e5dbec;
+  --sidebar-ring: #7c3aed;
 }
 
 .dark {

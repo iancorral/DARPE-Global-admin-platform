@@ -67,26 +67,33 @@ The admin tool **evolves** it rather than copying it:
 
 ## 3. Color
 
-Accent (violet) is the only chromatic color in the interface. Everything else is
-neutral. Language colors are the single exception, and only as small indicators.
+The palette comes from DARPE's brand presentation. Violet is the only chromatic
+color in the interface; everything else is warm neutral. Language colors are the
+single exception, and only as small indicators.
 
 ```
-Accent
-  primary        #7C3AED    buttons, active nav, links, focus rings
-  primary-hover  #6D28D9
-  tint           #F3EEFF    active backgrounds, selected states
-  border-tint    #E9E2F7    card borders
+Brand (from the presentation)
+  deep violet      #482D79    text on light, primary buttons, active nav
+  mauve            #9968AE    decorative/large use only — 4.2:1, fails AA for text
+  medium lavender  #B482CA    decorative only
+  pale lavender    #ECDFF2    selected/hover tints, secondary badges
+  lavender gray    #B4A8BA    never text; at most border mixing
+  warm near-white  #FAF7FC    app page background
 
-Surfaces
-  page           #F5F3FB    app background (subtle lavender)
-  card           #FFFFFF
-  border         #E2E8F0
-
-Text
-  primary        #0F172A
-  secondary      #64748B    labels, metadata
-  muted          #94A3B8    placeholders, disabled
+Applied tokens (globals.css :root)
+  background       #FAF7FC    warm page ground, never cold gray
+  foreground       #2A2137    violet-tinted near-black (14.4:1 on background)
+  card             #FFFFFF
+  border / input   #E5DBEC    lavender-tinted 1px borders
+  primary          #482D79    10.9:1 on white; foreground #FAF7FC (10.3:1)
+  secondary/accent #ECDFF2    with #482D79 text (8.5:1)
+  muted-foreground #655D6E    5.9:1 on background — the darkest "muted" allowed
+  ring             #7C3AED    focus only — brighter for visibility (>5:1, needs 3:1)
 ```
+
+Deep violet carries meaning; the brighter `#7C3AED` survives only as the focus
+ring. Never set text in mauve, medium lavender or lavender gray — they fail
+WCAG AA on these surfaces.
 
 Status colors are used **only** for badges and never as UI chrome:
 
@@ -109,9 +116,15 @@ Italian  #D97706    German   #0284C7    Japanese  #DB2777
 ## 4. Typography
 
 ```
-UI          Inter (system fallback: -apple-system, Segoe UI, sans-serif)
-Page titles Georgia / serif — page <h1> only, never body or labels
+UI          Geist via next/font, registered as --font-sans
+Page titles font-serif — "Iowan Old Style", Palatino, Georgia stack
 ```
+
+`font-serif` is for page `<h1>`s, the DARPE wordmark and the dashboard greeting
+only — never body text, section titles, labels or controls. It is a system
+stack on purpose: DARPE's official display face has not been confirmed, so no
+webfont is licensed or shipped until it is. Swapping it later is one token in
+`globals.css`.
 
 Scale:
 
@@ -150,13 +163,21 @@ Breakpoint behaviour:
 
 | Element | Mobile (`< lg`) | Desktop (`≥ lg`) |
 | --- | --- | --- |
-| Navigation | Fixed bottom bar, 5 items | Left sidebar, 224 px |
+| Navigation | Fixed bottom bar, 4 items (Home, Calendar, Students, Teachers) | Left sidebar, 240 px, grouped |
 | Tables | Essential columns only | All columns |
 | Forms | Single column | Two columns where natural |
 | Main content | `pb-20` to clear bottom nav | `pb-0` |
 
 Secondary table columns hide with `hidden md:table-cell` / `hidden lg:table-cell`,
 in order of decreasing importance.
+
+Sidebar information architecture is grouped — `Overview` (Dashboard) and
+`Operations` (Calendar, Students, Teachers). Future groups `Money` (Finance,
+Teacher payouts) and `Settings` are added only when a real route exists:
+navigation never links to a page that is not there. The active item is marked
+with a thin deep-violet left rule and a faint lavender tint, not a filled pill.
+The mobile bar may later gain a fifth `More` tab, only once it has at least one
+real destination.
 
 ---
 
@@ -181,6 +202,16 @@ Conventions:
 - **Toasts** (sonner) — confirm every mutation. Success is a short sentence in
   sentence case; errors say what happened, not "Error 500".
 - **Icons** — lucide-react, `size-4` inline, `strokeWidth` 1.8 default / 2.2 active.
+- **List filtering** — students and teachers filter client-side: an accent-insensitive
+  search box (`src/lib/search.ts`) plus a status select that defaults to the working set
+  (non-archived students, active teachers). The rows are already loaded and carry no
+  contact data beyond what the table shows, and search text stays out of the URL, where
+  a person's name does not belong. Archived students and inactive teachers are reached
+  by switching the status filter, not on separate pages.
+- **Edit forms** — creating and editing a record share one form component; edit mode
+  changes only the action called, the initial values and the destination afterwards.
+  Destructive-adjacent state (deactivating a teacher, archiving a student) is part of
+  the ordinary edit form, with a sentence under the field explaining the consequence.
 
 ---
 

@@ -9,6 +9,8 @@ type Props = {
   originalDayLabel: string;
   onCancel: () => void;
   disabled?: boolean;
+  /** Where the class is being moved to right now, or null when idle. */
+  savingLabel?: string | null;
 };
 
 /**
@@ -16,11 +18,18 @@ type Props = {
  * mode, where it currently sits, and how to get out. Rendered above the grid so it
  * stays visible after navigating to another week.
  */
-export function MoveBanner({ session, originalDayLabel, onCancel, disabled }: Props) {
+export function MoveBanner({
+  session,
+  originalDayLabel,
+  onCancel,
+  disabled,
+  savingLabel,
+}: Props) {
   return (
     <div
       role="status"
-      className="mb-3 flex flex-wrap items-start justify-between gap-3 rounded-md border border-violet-200 bg-violet-50 px-4 py-3"
+      aria-busy={savingLabel ? true : undefined}
+      className="mb-3 flex shrink-0 flex-wrap items-start justify-between gap-3 rounded-md border border-violet-200 bg-violet-50 px-4 py-3"
     >
       <div className="flex min-w-0 items-start gap-2">
         <Move className="mt-0.5 size-4 shrink-0 text-violet-700" aria-hidden="true" />
@@ -31,7 +40,7 @@ export function MoveBanner({ session, originalDayLabel, onCancel, disabled }: Pr
             · {session.teacherName}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Choose a new time below, or change week first. Nothing is saved until you confirm.
+            {savingLabel ?? "Choose a new time below, or change week first. Picking one moves the class."}
           </p>
         </div>
       </div>

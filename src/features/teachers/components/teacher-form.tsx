@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -7,31 +8,49 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import {
   Form, FormControl, FormField, FormItem, FormLabel, FormMessage,
 } from "@/components/ui/form";
-import { createTeacher } from "../actions";
+import { createTeacher, updateTeacher } from "../actions";
 import { teacherFormSchema, type TeacherFormInput } from "../schemas";
 
 type LanguageOption = { id: string; name: string };
 
-export function TeacherForm({ languages }: { languages: LanguageOption[] }) {
+type Props = {
+  languages: LanguageOption[];
+  /**
+   * When present, the form edits this teacher instead of creating one. Only an
+   * edit offers the active flag: a teacher is always created active.
+   */
+  teacher?: { id: string; active: boolean } & TeacherFormInput;
+};
+
+export function TeacherForm({ languages, teacher }: Props) {
   const router = useRouter();
+
+  // Outside the form state on purpose: it needs no validation, and the create
+  // schema knows nothing about it.
+  const [active, setActive] = useState(teacher?.active ?? true);
 
   const form = useForm<TeacherFormInput>({
     resolver: zodResolver(teacherFormSchema),
-    defaultValues: { firstName: "", lastName: "", email: "", phone: "", languageIds: [] },
+    defaultValues: teacher ?? {
+      firstName: "", lastName: "", email: "", phone: "", languageIds: [],
+    },
   });
 
   async function onSubmit(values: TeacherFormInput) {
-    const result = await createTeacher(values);
+    const result = teacher
+      ? await updateTeacher({ id: teacher.id, active, ...values })
+      : await createTeacher(values);
 
     if (!result.success) {
       toast.error(result.error);
       return;
     }
 
-    toast.success("Teacher created");
+    toast.success(teacher ? "Teacher updated" : "Teacher created");
     router.push("/teachers");
   }
 
@@ -124,9 +143,32 @@ export function TeacherForm({ languages }: { languages: LanguageOption[] }) {
           )}
         />
 
+        {teacher && (
+          <div className="space-y-2 rounded-md border p-4">
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="teacher-active"
+                checked={active}
+                onCheckedChange={(checked) => setActive(checked === true)}
+              />
+              <Label htmlFor="teacher-active" className="font-normal">
+                Active
+              </Label>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Inactive teachers cannot be given new classes and stop appearing when
+              scheduling. Classes they already have are kept.
+            </p>
+          </div>
+        )}
+
         <div className="flex gap-3">
           <Button type="submit" disabled={form.formState.isSubmitting}>
-            {form.formState.isSubmitting ? "Saving..." : "Create teacher"}
+            {form.formState.isSubmitting
+              ? "Saving..."
+              : teacher
+                ? "Save changes"
+                : "Create teacher"}
           </Button>
           <Button type="button" variant="outline" onClick={() => router.back()}>
             Cancel

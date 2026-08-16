@@ -98,6 +98,47 @@ export const weeklySeriesSchema = z
 
 export type WeeklySeriesInput = z.infer<typeof weeklySeriesSchema>;
 
+/**
+ * Replacing a recurring series from one of its classes onward.
+ *
+ * Identified by the class the user selected, not by the slot: the cutoff is that
+ * class's stored `slotOccurrenceOn`, read back on the server, so a client cannot
+ * choose which week of history the change starts from.
+ *
+ * `endsOn` is required even when the pattern being replaced never ended. An
+ * open-ended rule can have its future segment replaced, but only by a finite one —
+ * the calendar does not create unbounded series, and quietly carrying "forever"
+ * through an edit would recreate one by the back door.
+ */
+export const updateSeriesSchema = z
+  .object({
+    id: z.string("Select a class").min(1, "Select a class"),
+    teacherId: z.string("Select a teacher").min(1, "Select a teacher"),
+    startsOn: realDateOnly,
+    endsOn: realDateOnly,
+    startTime: alignedStartTimeSchema,
+    durationMinutes: offeredDurationSchema,
+  })
+  .refine((series) => series.endsOn >= series.startsOn, {
+    message: "The last class cannot be before the first one",
+    path: ["endsOn"],
+  })
+  .refine(
+    (series) => series.endsOn <= addDaysToDate(series.startsOn, MAX_SERIES_SPAN_DAYS),
+    {
+      message: `A weekly series can run for at most ${MAX_SERIES_WEEKS} weeks. Choose an earlier end date.`,
+      path: ["endsOn"],
+    }
+  );
+
+export type UpdateSeriesInput = z.infer<typeof updateSeriesSchema>;
+
+export const endSeriesSchema = z.object({
+  id: z.string("Select a class").min(1, "Select a class"),
+});
+
+export type EndSeriesInput = z.infer<typeof endSeriesSchema>;
+
 export const generateMonthSchema = z.object({
   year: z.coerce.number().int().min(2020).max(2100),
   month: z.coerce.number().int().min(1).max(12),

@@ -9,6 +9,13 @@ export const MODALITIES = [
 
 export const STUDENT_STATUSES = ["TRIAL", "ACTIVE", "PAUSED", "ARCHIVED"] as const;
 
+export const STUDENT_STATUS_LABELS: Record<(typeof STUDENT_STATUSES)[number], string> = {
+  TRIAL: "Trial",
+  ACTIVE: "Active",
+  PAUSED: "Paused",
+  ARCHIVED: "Archived",
+};
+
 export const studentFormSchema = z.object({
   firstName: z.string().trim().min(1, "First name is required").max(60),
   lastName: z.string().trim().min(1, "Last name is required").max(60),
@@ -23,3 +30,10 @@ export const studentFormSchema = z.object({
 });
 
 export type StudentFormInput = z.infer<typeof studentFormSchema>;
+
+/** An edit is the same form the student was created with, aimed at one record. */
+export const updateStudentSchema = studentFormSchema.extend({
+  id: z.string().min(1),
+});
+
+export type UpdateStudentInput = z.infer<typeof updateStudentSchema>;

@@ -20,13 +20,18 @@ import {
   ELIGIBLE_STUDENT_STATUSES,
   checkManualClassEligibility,
 } from "@/features/sessions/eligibility";
-import { TEACHER_OCCUPYING_STATUSES } from "@/features/sessions/lifecycle";
+import { TEACHER_OCCUPYING_STATUSES, canEditScheduling } from "@/features/sessions/lifecycle";
 import { firstValidationMessage } from "@/features/sessions/schemas";
 import {
   inSchedulingTransaction,
   type ActionResult,
 } from "@/features/sessions/transaction";
 import { expandSlotsForDates, expandSlotsForMonth, occurrenceKey } from "./generation";
+import {
+  planSeriesEnd,
+  planSeriesSplit,
+  type OldSlotChange,
+} from "./series-edit";
 import {
   buildWeeklySeries,
   planWeeklySeries,
@@ -36,27 +41,24 @@ import {
   type SeriesOccurrence,
 } from "./series";
 import {
+  endSeriesSchema,
   generateMonthSchema,
   scheduleSlotSchema,
+  updateSeriesSchema,
   weeklySeriesSchema,
+  type EndSeriesInput,
   type GenerateMonthInput,
   type ScheduleSlotInput,
+  type UpdateSeriesInput,
   type WeeklySeriesInput,
 } from "./schemas";
-import type { Prisma } from "@/generated/prisma/client";
-
-export type { ActionResult };
-
-export type GenerationConflict = {
-  studentName: string;
-  teacherName: string;
-  date: string;
-  startLabel: string;
-};
-
-export type GenerateResult =
-  | { success: true; created: number; skipped: number; conflicts: GenerationConflict[] }
-  | { success: false; error: string };
+import { Prisma } from "@/generated/prisma/client";
+import type {
+  GenerateResult,
+  GenerationConflict,
+  SeriesEndResult,
+  SeriesUpdateResult,
+} from "./action-results";
 
 export async function createScheduleSlot(input: ScheduleSlotInput): Promise<ActionResult> {
   await requireUser();
@@ -99,10 +101,26 @@ export async function createScheduleSlot(input: ScheduleSlotInput): Promise<Acti
 export async function deactivateScheduleSlot(id: string): Promise<ActionResult> {
   await requireUser();
 
-  const slot = await db.scheduleSlot.update({
-    where: { id },
-    data: { active: false },
-  });
+  if (typeof id !== "string" || id.length === 0) {
+    return { success: false, error: "Select a schedule slot to remove." };
+  }
+
+  let slot;
+  try {
+    slot = await db.scheduleSlot.update({
+      where: { id },
+      data: { active: false },
+    });
+  } catch (error) {
+    // P2025: the row is already gone, likely removed from another tab or device.
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2025"
+    ) {
+      return { success: false, error: "That schedule slot no longer exists." };
+    }
+    throw error;
+  }
 
   revalidatePath(`/students/${slot.studentId}`);
   return { success: true };
@@ -125,12 +143,17 @@ export async function deactivateScheduleSlot(id: string): Promise<ActionResult> 
  *
  * Runs on the caller's transaction client, so the availability it reports and the
  * write it authorises cannot be separated by another coordinator's booking.
+ *
+ * `exclude` is what the caller is about to replace, and must not block itself: the
+ * recurring rule whose future segment is being rewritten, and the concrete classes
+ * being moved or cancelled by the same edit. Everything else still counts.
  */
 async function findTeacherOccupancy(
   client: Prisma.TransactionClient,
   teacherId: string,
   candidates: SeriesOccurrence[],
-  dates: string[]
+  dates: string[],
+  exclude: { slotId?: string; sessionIds?: string[] } = {}
 ): Promise<TeacherTimeRange[]> {
   const windowStart = Math.min(...candidates.map((candidate) => candidate.startsAt.getTime()));
   const windowEnd = Math.max(...candidates.map((candidate) => endOf(candidate).getTime()));
@@ -141,6 +164,7 @@ async function findTeacherOccupancy(
     client.classSession.findMany({
       where: {
         teacherId,
+        ...(exclude.sessionIds?.length && { id: { notIn: exclude.sessionIds } }),
         status: { in: TEACHER_OCCUPYING_STATUSES },
         startsAt: {
           gte: new Date(windowStart - CONFLICT_LOOKBACK_MINUTES * 60_000),
@@ -154,6 +178,7 @@ async function findTeacherOccupancy(
     client.scheduleSlot.findMany({
       where: {
         teacherId,
+        ...(exclude.slotId && { id: { not: exclude.slotId } }),
         active: true,
         student: { status: { in: ELIGIBLE_STUDENT_STATUSES } },
         startsOn: { lte: parseDateOnly(lastDate) },
@@ -251,7 +276,7 @@ export async function createWeeklySeries(input: WeeklySeriesInput): Promise<Acti
     return { success: false, error: "That date range contains no classes." };
   }
 
-  const result = await inSchedulingTransaction(async (tx) => {
+  const result = await inSchedulingTransaction<ActionResult>(async (tx) => {
     const [student, teacher] = await Promise.all([
       tx.student.findUnique({
         where: { id: studentId },
@@ -531,4 +556,395 @@ export async function generateMonthlySessions(
     skipped: occurrences.length - created - conflicts.length,
     conflicts,
   };
+}
+
+/**
+ * The class a series edit was started from, with everything the edit must reason
+ * about: its recurring rule, that rule's student, and the classes the rule has
+ * already produced from the cutoff onward.
+ *
+ * The cutoff is the class's stored `slotOccurrenceOn` — the week it was generated
+ * for. Its `startsAt` may have been moved to another day entirely, and moving a
+ * class must not change which week of the series a later edit starts from.
+ */
+async function loadSeriesContext(client: Prisma.TransactionClient, sessionId: string) {
+  const session = await client.classSession.findUnique({
+    where: { id: sessionId },
+    select: {
+      status: true,
+      slotOccurrenceOn: true,
+      language: { select: { name: true } },
+      scheduleSlot: {
+        select: {
+          id: true,
+          startsOn: true,
+          student: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              status: true,
+              languageId: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!session) {
+    return { ok: false as const, error: "That session no longer exists." };
+  }
+
+  if (!canEditScheduling(session.status)) {
+    return {
+      ok: false as const,
+      error:
+        session.status === "COMPLETED"
+          ? "This class is already completed. Reopen it before changing the series."
+          : "This class is cancelled. Restore it before changing the series.",
+    };
+  }
+
+  if (!session.scheduleSlot || !session.slotOccurrenceOn) {
+    return { ok: false as const, error: "This class is not part of a recurring series." };
+  }
+
+  const slot = session.scheduleSlot;
+  const cutoffOn = formatDateOnly(session.slotOccurrenceOn);
+
+  const futureRows = await client.classSession.findMany({
+    where: {
+      scheduleSlotId: slot.id,
+      slotOccurrenceOn: { gte: parseDateOnly(cutoffOn) },
+    },
+    select: {
+      id: true,
+      status: true,
+      slotOccurrenceOn: true,
+      participants: { select: { id: true }, take: 1 },
+    },
+  });
+
+  return {
+    ok: true as const,
+    cutoffOn,
+    slot,
+    student: slot.student,
+    languageName: session.language.name,
+    futureOccurrences: futureRows.flatMap((row) =>
+      row.slotOccurrenceOn
+        ? [
+            {
+              sessionId: row.id,
+              occurrenceOn: formatDateOnly(row.slotOccurrenceOn),
+              status: row.status,
+              hasParticipant: row.participants.length > 0,
+            },
+          ]
+        : []
+    ),
+  };
+}
+
+/** Ends the old recurring rule at the cutoff, or retires it if it never ran before. */
+async function applyOldSlotChange(
+  client: Prisma.TransactionClient,
+  slotId: string,
+  change: OldSlotChange
+) {
+  await client.scheduleSlot.update({
+    where: { id: slotId },
+    data:
+      change.action === "deactivate"
+        ? { active: false }
+        : { endsOn: parseDateOnly(change.endsOn) },
+  });
+}
+
+/**
+ * Replaces a recurring series from one of its classes onward.
+ *
+ * The old rule is split rather than rewritten: it ends the day before the selected
+ * class, and a new rule takes over from the submitted first date. Every earlier
+ * week keeps the rule that produced it, so history still means what it meant.
+ *
+ * The classes the old rule already produced from the cutoff on are carried across
+ * to the replacement dates in order, so a series that moves to another weekday
+ * takes its classes with it. That overwrites individual reschedules made to those
+ * future weeks, which is what this scope asks for and what the dialog says.
+ *
+ * All or nothing, inside one serializable transaction: a completed class in the
+ * affected range, an ineligible student or teacher, or a single clash refuses the
+ * whole edit and writes nothing.
+ */
+export async function updateSeriesFromSession(
+  input: UpdateSeriesInput
+): Promise<SeriesUpdateResult> {
+  await requireUser();
+
+  const parsed = updateSeriesSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      success: false,
+      error: firstValidationMessage(parsed.error, "Please check the form and try again."),
+    };
+  }
+
+  const { id, teacherId, startsOn, endsOn, startTime, durationMinutes } = parsed.data;
+  let studentId: string | null = null;
+
+  const result = await inSchedulingTransaction<SeriesUpdateResult>(async (tx) => {
+    const context = await loadSeriesContext(tx, id);
+    if (!context.ok) {
+      return { success: false, error: context.error };
+    }
+
+    const { cutoffOn, slot, student, languageName } = context;
+    studentId = student.id;
+
+    // The replacement takes over from the cutoff, so it cannot begin before it:
+    // the old rule now ends the day before, and an earlier start would overlap the
+    // history this split exists to leave alone.
+    if (startsOn < cutoffOn) {
+      return {
+        success: false,
+        error:
+          `The new first class cannot be before ${cutoffOn}, the class you are ` +
+          `changing from. Earlier classes are always left as they are.`,
+      };
+    }
+
+    const teacher = await tx.teacher.findUnique({
+      where: { id: teacherId },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        active: true,
+        languages: { select: { languageId: true } },
+      },
+    });
+
+    if (!teacher) {
+      return { success: false, error: "That teacher no longer exists." };
+    }
+
+    const eligibility = checkManualClassEligibility({
+      student: {
+        name: `${student.firstName} ${student.lastName}`,
+        status: student.status,
+        languageId: student.languageId,
+      },
+      teacher: {
+        name: `${teacher.firstName} ${teacher.lastName}`,
+        active: teacher.active,
+        languageIds: teacher.languages.map((entry) => entry.languageId),
+      },
+      languageName,
+    });
+
+    if (!eligibility.ok) {
+      return { success: false, error: eligibility.error };
+    }
+
+    const replacementDates = weeklyOccurrenceDates(startsOn, endsOn);
+    const split = planSeriesSplit({
+      cutoffOn,
+      slotStartsOn: formatDateOnly(slot.startsOn),
+      futureOccurrences: context.futureOccurrences,
+      replacementDates,
+    });
+
+    if (!split.ok) {
+      return { success: false, error: split.error };
+    }
+
+    const { plan } = split;
+
+    const draft = buildWeeklySeries({
+      startsOn,
+      endsOn,
+      startTime,
+      durationMinutes,
+      teacherId: teacher.id,
+      student: { id: student.id, languageId: student.languageId },
+    });
+
+    // Only the weeks that will actually hold a class compete for the teacher's
+    // time; a week carried across as cancelled occupies nobody.
+    const occupiedDates = new Set(plan.occupiedDates);
+    const candidates = draft.occurrences.filter((occurrence) =>
+      occupiedDates.has(occurrence.occurrenceOn)
+    );
+
+    if (candidates.length > 0) {
+      // The rule being replaced, and the classes this same edit is moving or
+      // cancelling, must not block it. Everything else still counts.
+      const affectedSessionIds = [
+        ...plan.updates.map((update) => update.sessionId),
+        ...plan.cancels.map((cancel) => cancel.sessionId),
+      ];
+
+      const occupied = await findTeacherOccupancy(
+        tx,
+        teacher.id,
+        candidates,
+        replacementDates,
+        { slotId: slot.id, sessionIds: affectedSessionIds }
+      );
+
+      const booking = planWeeklySeries(candidates, occupied);
+      if (!booking.ok) {
+        return {
+          success: false,
+          error: seriesConflictMessage(
+            teacher.firstName,
+            booking.conflicts.map(
+              (conflict) =>
+                `${formatInZone(conflict.startsAt, DEFAULT_TIMEZONE, "MMM d")} at ` +
+                `${formatInZone(conflict.startsAt, DEFAULT_TIMEZONE)}`
+            )
+          ),
+        };
+      }
+    }
+
+    const byDate = new Map(
+      draft.occurrences.map((occurrence) => [occurrence.occurrenceOn, occurrence])
+    );
+
+    // Written in an order that cannot collide with the (slot, occurrence) unique
+    // index: the replacement rule is brand new, so nothing already points at it,
+    // and every date it receives is distinct.
+    const replacement = await tx.scheduleSlot.create({
+      data: draft.slot,
+      select: { id: true },
+    });
+
+    for (const update of plan.updates) {
+      const occurrence = byDate.get(update.occurrenceOn);
+      if (!occurrence) continue;
+
+      await tx.classSession.update({
+        where: { id: update.sessionId },
+        data: {
+          startsAt: occurrence.startsAt,
+          durationMinutes,
+          teacherId: teacher.id,
+          status: update.status,
+          scheduleSlotId: replacement.id,
+          slotOccurrenceOn: parseDateOnly(update.occurrenceOn),
+        },
+      });
+
+      // Existing participant rows are left exactly as they are, attendance and
+      // all; one is only added if a class somehow had none.
+      if (update.needsParticipant) {
+        await tx.classParticipant.create({
+          data: { classSessionId: update.sessionId, studentId: student.id },
+        });
+      }
+    }
+
+    if (plan.creates.length > 0) {
+      const created = await tx.classSession.createManyAndReturn({
+        data: seriesSessionRecords(
+          replacement.id,
+          plan.creates.flatMap((create) => {
+            const occurrence = byDate.get(create.occurrenceOn);
+            return occurrence ? [occurrence] : [];
+          })
+        ),
+        select: { id: true },
+      });
+
+      await tx.classParticipant.createMany({
+        data: created.map((session) => ({
+          classSessionId: session.id,
+          studentId: student.id,
+        })),
+      });
+    }
+
+    if (plan.cancels.length > 0) {
+      // Kept on the old rule and merely cancelled: nothing is deleted, and the
+      // shortened rule no longer covers these dates, so generation leaves them be.
+      await tx.classSession.updateMany({
+        where: { id: { in: plan.cancels.map((cancel) => cancel.sessionId) } },
+        data: { status: "CANCELLED" },
+      });
+    }
+
+    await applyOldSlotChange(tx, slot.id, plan.oldSlot);
+
+    return {
+      success: true,
+      updated: plan.updates.length,
+      created: plan.creates.length,
+      cancelled: plan.cancels.length,
+    };
+  });
+
+  if (!result.success) {
+    return result;
+  }
+
+  revalidatePath("/calendar");
+  if (studentId) revalidatePath(`/students/${studentId}`);
+  return result;
+}
+
+/**
+ * Ends a recurring series from one of its classes onward.
+ *
+ * The rule stops the day before the selected class, and every still-scheduled
+ * class from that week on is cancelled. Completed classes and already-cancelled
+ * ones are untouched, and nothing is deleted — the series stops happening, it does
+ * not stop having happened.
+ */
+export async function endSeriesFromSession(input: EndSeriesInput): Promise<SeriesEndResult> {
+  await requireUser();
+
+  const parsed = endSeriesSchema.safeParse(input);
+  if (!parsed.success) {
+    return { success: false, error: "Select a class to end the series from." };
+  }
+
+  let studentId: string | null = null;
+
+  const result = await inSchedulingTransaction<SeriesEndResult>(async (tx) => {
+    const context = await loadSeriesContext(tx, parsed.data.id);
+    if (!context.ok) {
+      return { success: false, error: context.error };
+    }
+
+    const { cutoffOn, slot, student } = context;
+    studentId = student.id;
+
+    const plan = planSeriesEnd({
+      cutoffOn,
+      slotStartsOn: formatDateOnly(slot.startsOn),
+      futureOccurrences: context.futureOccurrences,
+    });
+
+    if (plan.cancelSessionIds.length > 0) {
+      await tx.classSession.updateMany({
+        where: { id: { in: plan.cancelSessionIds } },
+        data: { status: "CANCELLED" },
+      });
+    }
+
+    await applyOldSlotChange(tx, slot.id, plan.oldSlot);
+
+    return { success: true, cancelled: plan.cancelSessionIds.length };
+  });
+
+  if (!result.success) {
+    return result;
+  }
+
+  revalidatePath("/calendar");
+  if (studentId) revalidatePath(`/students/${studentId}`);
+  return result;
 }

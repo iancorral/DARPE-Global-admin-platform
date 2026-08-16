@@ -4,7 +4,8 @@ import { useActionState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { login, type ActionState } from "../actions";
+import { login } from "../actions";
+import type { ActionState } from "../action-results";
 
 export function LoginForm() {
   const [state, formAction, isPending] = useActionState<ActionState, FormData>(login, null);

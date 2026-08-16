@@ -10,6 +10,7 @@ import {
   creationStarts,
   endTimeLabel,
   formatSlotTime,
+  initialAgendaScrollMinutes,
   intervalStart,
   isAlignedStart,
   isAlignedStartTime,
@@ -589,6 +590,112 @@ describe("buildSchedulingUpdate", () => {
   });
 });
 
+/**
+ * Where the phone agenda opens. It scrolls inside its own panel, so opening at the
+ * top of a twelve-hour list would hide whatever the reader came for.
+ */
+describe("initialAgendaScrollMinutes", () => {
+  const hours = { startHour: 8, endHour: 20 };
+
+  it("opens today at the half hour happening now", () => {
+    expect(
+      initialAgendaScrollMinutes({
+        isToday: true,
+        nowMinutes: 9 * 60 + 47,
+        firstSessionMinutes: 8 * 60,
+        ...hours,
+      })
+    ).toBe(9 * 60 + 30);
+  });
+
+  it("prefers now over the first class, because today is about now", () => {
+    expect(
+      initialAgendaScrollMinutes({
+        isToday: true,
+        nowMinutes: 15 * 60,
+        firstSessionMinutes: 8 * 60,
+        ...hours,
+      })
+    ).toBe(15 * 60);
+  });
+
+  it("falls back to the first class when now is outside operating hours", () => {
+    expect(
+      initialAgendaScrollMinutes({
+        isToday: true,
+        nowMinutes: 6 * 60,
+        firstSessionMinutes: 11 * 60,
+        ...hours,
+      })
+    ).toBe(11 * 60);
+
+    expect(
+      initialAgendaScrollMinutes({
+        isToday: true,
+        nowMinutes: 22 * 60,
+        firstSessionMinutes: 11 * 60,
+        ...hours,
+      })
+    ).toBe(11 * 60);
+  });
+
+  it("opens another day at its first class", () => {
+    expect(
+      initialAgendaScrollMinutes({
+        isToday: false,
+        nowMinutes: 9 * 60,
+        firstSessionMinutes: 13 * 60,
+        ...hours,
+      })
+    ).toBe(13 * 60);
+  });
+
+  it("opens an empty day at the start, which is what null asks for", () => {
+    expect(
+      initialAgendaScrollMinutes({
+        isToday: false,
+        nowMinutes: 9 * 60,
+        firstSessionMinutes: null,
+        ...hours,
+      })
+    ).toBeNull();
+  });
+
+  it("opens at the start when today is empty and now is out of hours", () => {
+    expect(
+      initialAgendaScrollMinutes({
+        isToday: true,
+        nowMinutes: 5 * 60,
+        firstSessionMinutes: null,
+        ...hours,
+      })
+    ).toBeNull();
+  });
+
+  it("treats the last visible hour as past the end", () => {
+    // 20:00 is the grid's exclusive end, so there is no row to open at.
+    expect(
+      initialAgendaScrollMinutes({
+        isToday: true,
+        nowMinutes: 20 * 60,
+        firstSessionMinutes: null,
+        ...hours,
+      })
+    ).toBeNull();
+  });
+
+  it("ignores an unknown clock rather than guessing", () => {
+    expect(
+      initialAgendaScrollMinutes({
+        isToday: true,
+        nowMinutes: null,
+        firstSessionMinutes: 9 * 60,
+        ...hours,
+      })
+    ).toBe(9 * 60);
+  });
+});
+
 describe("calendarUrl", () => {
   it("keeps move mode in the url so it survives changing week", () => {
     expect(calendarUrl({ week: "2026-08-17", moving: "abc" })).toBe(
@@ -606,5 +713,66 @@ describe("calendarUrl", () => {
     expect(calendarUrl({ week: "2026-08-17", teacher: "t1" })).toBe(
       "/calendar?week=2026-08-17&teacher=t1"
     );
+  });
+});
+
+/**
+ * Move mode is a fact about the URL rather than component state, so the whole of
+ * its lifecycle is visible here.
+ *
+ * Both ways out — a move that succeeded and a move that was cancelled — go to the
+ * same address: the week and teacher filter that were on screen, without `moving`.
+ * Both are performed with `router.replace`, because `?moving=` is temporary state
+ * rather than somewhere the reader navigated to; pushing would leave the abandoned
+ * move in history for Back to walk into. A move the server refused changes no URL
+ * at all, so move mode simply stays open.
+ */
+describe("leaving move mode", () => {
+  const week = "2026-08-17";
+  const teacher = "t1";
+  const moving = "session-1";
+
+  it("keeps move mode when the server refuses the move", () => {
+    // Nothing navigates on a refusal, so the address is still the move-mode one and
+    // another destination can be chosen straight away.
+    const url = calendarUrl({ week, teacher, moving });
+
+    expect(url).toContain("moving=session-1");
+    expect(calendarMode(moving)).toBe("moving");
+  });
+
+  it("returns a successful move to the same week and teacher, without moving", () => {
+    const cleanup = calendarUrl({ week, teacher });
+
+    expect(cleanup).toBe("/calendar?week=2026-08-17&teacher=t1");
+    expect(cleanup).not.toContain("moving");
+    expect(calendarMode(null)).toBe("browse");
+  });
+
+  it("differs from the move-mode address only by dropping moving", () => {
+    // Both exits build this same address, so neither can quietly lose the week or
+    // the teacher filter the reader was working under.
+    const inMove = calendarUrl({ week, teacher, moving });
+    const cleanup = calendarUrl({ week, teacher });
+
+    expect(inMove).toBe(`${cleanup}&moving=${moving}`);
+  });
+
+  it("keeps an unfiltered calendar unfiltered on the way out", () => {
+    expect(calendarUrl({ week })).toBe("/calendar?week=2026-08-17");
+  });
+
+  it("still carries move mode across a genuine week change", () => {
+    // Changing week is real navigation and keeps its history entry; the move is
+    // carried along rather than dropped.
+    const nextWeek = calendarUrl({ week: "2026-08-24", teacher, moving });
+
+    expect(nextWeek).toBe("/calendar?week=2026-08-24&teacher=t1&moving=session-1");
+    expect(calendarMode(moving)).toBe("moving");
+  });
+
+  it("returns positions to offering creation once move mode is left", () => {
+    expect(offersCreation(calendarMode(moving))).toBe(false);
+    expect(offersCreation(calendarMode(null))).toBe(true);
   });
 });

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { Check, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -7,10 +8,17 @@ import {
   buildAgendaRows,
   classifyDestination,
   formatSlotTime,
+  initialAgendaScrollMinutes,
   type CreationSlot,
   type DestinationState,
   type MinuteRange,
 } from "../scheduling";
+import {
+  agendaRowId,
+  createPositionId,
+  moveDestinationId,
+  sessionCardId,
+} from "../element-ids";
 import type { DestinationSlot } from "./move-destinations";
 import type { CalendarSession, MovingSession } from "../queries";
 import type { CalendarDay } from "./calendar-day";
@@ -33,9 +41,16 @@ type Props = {
   occupiedOn: (date: string) => MinuteRange[];
   originalStartOn: (date: string) => number | null;
   disabled: boolean;
-  onOpenSession: (session: CalendarSession) => void;
-  onSelectDestination: (slot: DestinationSlot) => void;
-  onCreateAt: (slot: CreationSlot) => void;
+  /** The week on screen, so changing week repositions the agenda once. */
+  weekStart: string;
+  /** Now, in academy wall-clock minutes, for today's opening position. */
+  nowMinutes: number;
+  startHour: number;
+  endHour: number;
+  /** Each handler is handed the button pressed, so focus can return to it. */
+  onOpenSession: (session: CalendarSession, trigger: HTMLElement) => void;
+  onSelectDestination: (slot: DestinationSlot, trigger: HTMLElement) => void;
+  onCreateAt: (slot: CreationSlot, trigger: HTMLElement) => void;
 };
 
 /**
@@ -58,6 +73,10 @@ export function DayAgenda({
   occupiedOn,
   originalStartOn,
   disabled,
+  weekStart,
+  nowMinutes,
+  startHour,
+  endHour,
   onOpenSession,
   onSelectDestination,
   onCreateAt,
@@ -74,12 +93,51 @@ export function DayAgenda({
   const originalStart = originalStartOn(selectedDate);
   const selectedDay = days.find((day) => day.date === selectedDate);
 
+  const scrollRef = useRef<HTMLDivElement>(null);
+  // What the agenda was last positioned for. Only a real change of day or week
+  // repositions it, so closing a dialog or entering move mode leaves the reader
+  // exactly where they were.
+  const positionedFor = useRef<string | null>(null);
+
+  useEffect(() => {
+    const anchor = `${weekStart}|${selectedDate}`;
+    if (positionedFor.current === anchor) return;
+    positionedFor.current = anchor;
+
+    const container = scrollRef.current;
+    if (!container) return;
+
+    const target = initialAgendaScrollMinutes({
+      isToday: selectedDay?.isToday ?? false,
+      nowMinutes,
+      firstSessionMinutes: daySessions[0]?.startMinutes ?? null,
+      startHour,
+      endHour,
+    });
+
+    if (target === null) {
+      container.scrollTop = 0;
+      return;
+    }
+
+    // The exact half hour may not be a row, so the first row at or after it wins.
+    const row = rows.find((candidate) => candidate.startMinutes >= target);
+    const element = row
+      ? document.getElementById(agendaRowId(selectedDate, row.startMinutes))
+      : null;
+
+    container.scrollTop = element ? element.offsetTop : 0;
+  }, [weekStart, selectedDate, selectedDay, nowMinutes, startHour, endHour, daySessions, rows]);
+
   return (
-    <div className="rounded-xl border bg-card">
+    // A self-contained panel: the day selector and the day's summary stay put, and
+    // only the schedule below them scrolls. The page itself never grows to the
+    // height of a whole day, so nothing ends up behind the fixed bottom navigation.
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border bg-card">
       <div
         role="tablist"
         aria-label="Day of the week"
-        className="flex gap-1 overflow-x-auto border-b p-2"
+        className="flex shrink-0 gap-1 overflow-x-auto border-b p-2"
       >
         {days.map((day) => {
           const isSelected = day.date === selectedDate;
@@ -107,7 +165,32 @@ export function DayAgenda({
         })}
       </div>
 
-      <div className="divide-y">
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b px-3 py-2">
+        <p className="min-w-0 truncate text-sm font-medium">
+          {selectedDay ? `${selectedDay.label} ${selectedDay.dayNumber}` : "Selected day"}
+        </p>
+        <p className="shrink-0 text-xs text-muted-foreground">
+          {isMoving
+            ? "Choose a new time"
+            : daySessions.length === 1
+              ? "1 class"
+              : `${daySessions.length} classes`}
+        </p>
+      </div>
+
+      <div
+        ref={scrollRef}
+        role="region"
+        aria-label={
+          selectedDay
+            ? `Schedule for ${selectedDay.label} ${selectedDay.dayNumber}`
+            : "Schedule for the selected day"
+        }
+        tabIndex={0}
+        // `scroll-pb-16` keeps the last row clear of the panel's bottom edge when it
+        // is scrolled to, rather than flush against it.
+        className="relative min-h-0 flex-1 divide-y scroll-pb-16 overflow-y-auto overscroll-contain focus-visible:ring-2 focus-visible:ring-violet-600 focus-visible:ring-inset focus-visible:outline-none"
+      >
         {daySessions.length === 0 && (
           <p className="px-3 py-4 text-center text-sm text-muted-foreground">
             No classes on{" "}
@@ -126,24 +209,32 @@ export function DayAgenda({
             : null;
 
           return (
-            <div key={row.startMinutes} className="p-2">
+            <div
+              key={row.startMinutes}
+              id={agendaRowId(selectedDate, row.startMinutes)}
+              className="p-2"
+            >
               {row.sessions.map((session) => (
                 <SessionCard
                   key={session.id}
                   session={session}
                   isBeingMoved={movingSession?.id === session.id}
                   isMoving={isMoving}
-                  onOpen={() => onOpenSession(session)}
+                  onOpen={(trigger) => onOpenSession(session, trigger)}
                 />
               ))}
 
               {row.isActionable && selectedDay && state && (
                 <button
                   type="button"
+                  id={moveDestinationId("agenda", selectedDate, row.startMinutes)}
                   disabled={disabled}
                   aria-label={`Move to ${selectedDay.label} ${selectedDay.dayNumber} at ${formatSlotTime(row.startMinutes)} — ${STATE_LABEL[state].toLowerCase()}`}
-                  onClick={() =>
-                    onSelectDestination({ date: selectedDate, startMinutes: row.startMinutes })
+                  onClick={(event) =>
+                    onSelectDestination(
+                      { date: selectedDate, startMinutes: row.startMinutes },
+                      event.currentTarget
+                    )
                   }
                   className={cn(
                     "flex min-h-11 w-full items-center justify-between gap-3 rounded-md border border-dashed px-3 py-2 text-sm transition-colors",
@@ -165,14 +256,18 @@ export function DayAgenda({
               {row.isActionable && selectedDay && !state && (
                 <button
                   type="button"
+                  id={createPositionId("agenda", selectedDate, row.startMinutes)}
                   disabled={disabled}
                   aria-label={`Add a class on ${selectedDay.label} ${selectedDay.dayNumber} at ${formatSlotTime(row.startMinutes)}`}
-                  onClick={() =>
-                    onCreateAt({
-                      date: selectedDate,
-                      startMinutes: row.startMinutes,
-                      dayLabel: `${selectedDay.label} ${selectedDay.dayNumber}`,
-                    })
+                  onClick={(event) =>
+                    onCreateAt(
+                      {
+                        date: selectedDate,
+                        startMinutes: row.startMinutes,
+                        dayLabel: `${selectedDay.label} ${selectedDay.dayNumber}`,
+                      },
+                      event.currentTarget
+                    )
                   }
                   className={cn(
                     "flex min-h-11 w-full items-center justify-between gap-3 rounded-md border border-dashed border-border px-3 py-2 text-sm transition-colors",
@@ -208,7 +303,7 @@ function SessionCard({
   session: CalendarSession;
   isBeingMoved: boolean;
   isMoving: boolean;
-  onOpen: () => void;
+  onOpen: (trigger: HTMLElement) => void;
 }) {
   const isCancelled = session.status === "CANCELLED";
   const isCompleted = session.status === "COMPLETED";
@@ -218,10 +313,11 @@ function SessionCard({
   return (
     <button
       type="button"
+      id={sessionCardId("agenda", session.id)}
       // In move mode the cards are context, not choices: the only thing to pick on
       // this screen is a destination.
       disabled={isMoving}
-      onClick={onOpen}
+      onClick={(event) => onOpen(event.currentTarget)}
       className={cn(
         "w-full rounded-md border border-l-2 px-3 py-2 text-left transition-colors",
         "focus-visible:ring-2 focus-visible:ring-violet-600 focus-visible:outline-none",
