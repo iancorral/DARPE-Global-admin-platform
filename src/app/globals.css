@@ -6,21 +6,114 @@
 
 @theme {
   /*
-   * DARPE's editorial serif, for page titles, the wordmark and the dashboard
-   * greeting only — never body text, labels or controls. A system stack rather
-   * than a webfont: the brand's official display face has not been confirmed
-   * yet, and these faces match the concept the client approved without
-   * shipping a single font byte.
+   * Semantic accent families.
+   *
+   * Each tone is a trio: a soft surface, a foreground dark enough to carry text
+   * on that surface (every pair measured at 5.8:1 or better, well past AA), and
+   * a line for borders and markers. Violet stays DARPE's identity — the other
+   * tones exist so a language, a status or a chart series can be told apart at
+   * a glance, never to make the interface colourful for its own sake.
+   *
+   * Colour is always a second signal. Every place these are used also carries
+   * the meaning in text, an icon, or a pattern.
    */
-  --font-serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, ui-serif, serif;
+  /*
+   * Four steps per tone, because they do different jobs:
+   *   surface — the card or chip behind text
+   *   solid   — the saturated one: dots, rails, chart bars, icon holders
+   *   fg      — dark enough to set text on `surface` (all ≥ 5.8:1)
+   *   line    — borders
+   *
+   * `solid` exists because using `fg` for markers made everything look grey:
+   * a dark plum dot next to dark plum text has nothing to say. Markers carry
+   * no text, so they can be vivid; text stays on `fg`.
+   */
+  --color-tone-violet: #f0e8ff;
+  --color-tone-violet-solid: #7c3aed;
+  --color-tone-violet-fg: #4c1d95;
+  --color-tone-violet-line: #c4b5fd;
+
+  --color-tone-blue: #e6efff;
+  --color-tone-blue-solid: #2563eb;
+  --color-tone-blue-fg: #1e40af;
+  --color-tone-blue-line: #a5c4fb;
+
+  --color-tone-teal: #ddf4ec;
+  --color-tone-teal-solid: #0d9488;
+  --color-tone-teal-fg: #0f5f4e;
+  --color-tone-teal-line: #8fd3c2;
+
+  --color-tone-amber: #fdeecf;
+  --color-tone-amber-solid: #d97706;
+  --color-tone-amber-fg: #8a4d08;
+  --color-tone-amber-line: #edc27a;
+
+  --color-tone-rose: #fde6ee;
+  --color-tone-rose-solid: #e11d63;
+  --color-tone-rose-fg: #9c1f4c;
+  --color-tone-rose-line: #f5a8c4;
+
+  --color-tone-cyan: #ddf0f9;
+  --color-tone-cyan-solid: #0891b2;
+  --color-tone-cyan-fg: #0d5871;
+  --color-tone-cyan-line: #8ccbe2;
+
+  --color-tone-moss: #e7f2d9;
+  --color-tone-moss-solid: #5b8c1f;
+  --color-tone-moss-fg: #3f6212;
+  --color-tone-moss-line: #b3d183;
+
+  --color-tone-plum: #f2e9f2;
+  --color-tone-plum-solid: #8b5e86;
+  --color-tone-plum-fg: #64405f;
+  --color-tone-plum-line: #d3bcd0;
+}
+
+/*
+ * Chart entrances. Deliberately short and one-shot: a dashboard is read many
+ * times a day, and anything longer becomes a delay rather than a flourish.
+ * Both are switched off wholesale under `prefers-reduced-motion` below.
+ */
+@keyframes darpe-grow-up {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes darpe-draw-line {
+  from {
+    stroke-dashoffset: var(--darpe-line-length, 1000);
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes darpe-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
+  /*
+   * Two type roles. `font-sans` (Instrument Sans) is everything operational;
+   * `font-serif` (Newsreader) is the editorial voice, used only for the
+   * wordmark, the dashboard greeting and page titles. `font-heading` stays on
+   * the sans face on purpose: card and dialog titles are UI, not editorial.
+   */
+  --font-sans: var(--font-instrument-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-newsreader), Georgia, ui-serif, serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-heading: var(--font-instrument-sans), ui-sans-serif, system-ui, sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -76,14 +169,15 @@
    *   deep violet #482D79 · mauve #9968AE · medium lavender #B482CA
    *   pale lavender #ECDFF2 · lavender gray #B4A8BA · warm near-white #FAF7FC
    *
-   * Contrast decides each color's job (ratios measured against the surfaces
-   * they sit on): deep violet carries text and primary actions (10.9:1 on
-   * white, 8.5:1 on pale lavender). Mauve (4.2:1) and lavender gray (2.6:1)
-   * fail AA for normal text, so they never carry words — lavender gray tints
-   * borders, mauve is reserved for large decorative use only. Focus rings keep
-   * the brighter violet #7C3AED: on these light surfaces it reads more than 5:1,
-   * well past the 3:1 non-text minimum, where deep violet's ring would be
-   * harder to spot against its own darker controls.
+   * The working accent is `#7C3AED`, not the presentation's deep `#482D79`.
+   * Deep violet is accessible but reads as institutional — the product looked
+   * like office software. `#7C3AED` is the brand's own brighter violet and
+   * still passes comfortably: white on it is 5.7:1, and as text on the warm
+   * background it is 5.3:1, both past AA. `#5B21B6` carries text on the pale
+   * lavender tints, where a lighter violet would not hold up.
+   *
+   * Mauve (4.2:1) and lavender gray (2.6:1) still never carry words: lavender
+   * gray tints borders, mauve is decorative only.
    */
   --background: #faf7fc;
   --foreground: #2a2137;
@@ -91,14 +185,14 @@
   --card-foreground: #2a2137;
   --popover: #ffffff;
   --popover-foreground: #2a2137;
-  --primary: #482d79;
-  --primary-foreground: #faf7fc;
+  --primary: #7c3aed;
+  --primary-foreground: #ffffff;
   --secondary: #ecdff2;
-  --secondary-foreground: #482d79;
+  --secondary-foreground: #5b21b6;
   --muted: #f3ecf7;
   --muted-foreground: #655d6e;
   --accent: #ecdff2;
-  --accent-foreground: #482d79;
+  --accent-foreground: #5b21b6;
   --destructive: oklch(0.577 0.245 27.325);
   --border: #e5dbec;
   --input: #e5dbec;
@@ -111,10 +205,10 @@
   --radius: 0.625rem;
   --sidebar: #ffffff;
   --sidebar-foreground: #2a2137;
-  --sidebar-primary: #482d79;
-  --sidebar-primary-foreground: #faf7fc;
+  --sidebar-primary: #7c3aed;
+  --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: #ecdff2;
-  --sidebar-accent-foreground: #482d79;
+  --sidebar-accent-foreground: #5b21b6;
   --sidebar-border: #e5dbec;
   --sidebar-ring: #7c3aed;
 }
@@ -151,6 +245,32 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+}
+
+@layer utilities {
+  .darpe-bar-grow {
+    transform-origin: bottom;
+    animation: darpe-grow-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  }
+
+  .darpe-line-draw {
+    stroke-dasharray: var(--darpe-line-length, 1000);
+    animation: darpe-draw-line 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+
+  .darpe-area-fade {
+    animation: darpe-fade-in 0.9s ease-out 0.3s backwards;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Nothing animates in; every element simply starts at its final state. */
+  .darpe-bar-grow,
+  .darpe-line-draw,
+  .darpe-area-fade {
+    animation: none;
+    stroke-dasharray: none;
+  }
 }
 
 @layer base {

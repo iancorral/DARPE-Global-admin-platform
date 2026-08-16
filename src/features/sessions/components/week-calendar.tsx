@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { visibleHourRange } from "../layout";
+import { visibleLanguageLegend } from "../legend";
 import type { CreateMode } from "../calendar-return";
 import {
   SCHEDULING_INTERVAL_MINUTES,
@@ -25,6 +26,7 @@ import { useTriggerFocus } from "./trigger-focus";
 import { MoveBanner } from "./move-banner";
 import { WeekGrid } from "./week-grid";
 import { DayAgenda } from "./day-agenda";
+import { LanguageLegend } from "./language-legend";
 import type { DestinationSlot } from "./move-destinations";
 import type {
   CalendarSession,
@@ -338,6 +340,8 @@ export function WeekCalendar({
           onActivate={setActive}
           onExitMoveMode={exitMoveMode}
         />
+        {/* Derived from the week on screen, so it explains only colours in use. */}
+        <LanguageLegend entries={visibleLanguageLegend(sessions)} className="mt-3" />
       </div>
 
       {isMoving && (

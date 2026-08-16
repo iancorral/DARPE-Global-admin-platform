@@ -25,9 +25,9 @@ the domain is modelled. Specifically:
   They stay correct regardless of how a screen renders.
 - A visual redesign, or replacing the UI layer entirely, must be possible without editing
   business rules.
-- Do not derive a domain rule from a UI constraint. If the calendar shows Monday through
-  Saturday, that is a display choice; the data model and generation logic still support
-  Sunday. Never let a layout decision become a business rule.
+- Do not derive a domain rule from a UI constraint. The calendar showing a given set of
+  days is a display choice; the data model and generation logic are unaffected by it.
+  Never let a layout decision become a business rule.
 
 ---
 
@@ -58,10 +58,57 @@ The admin tool **evolves** it rather than copying it:
 | Brand element | How it appears in the product |
 | --- | --- |
 | Violet / lavender palette | Single accent color; lavender only as tint |
-| Serif headlines | Page titles and the DARPE logotype only |
-| Dotted globe motif | Not used in the UI |
+| Serif headlines | Wordmark, greeting, page titles and key figures only |
+| Dotted globe motif | `DarpeMotif`, as a faint watermark — see below |
 | Flags per language | Replaced by colored dots + language name |
 | Warm, human copy | Kept: plain, friendly English, never corporate |
+
+### Charts
+
+Charts are hand-built from divs or inline SVG — there is no charting library
+and adding one needs a real justification. Rules, met by both current charts:
+
+- **Every chart states its content in text.** A `<figcaption>` (visually hidden
+  where appropriate) carries the same figures, so nothing is available only by
+  hovering.
+- **Every data point is a real focusable `<button>`** with an `aria-label`
+  naming its period and values; the tooltip opens on `focus` as well as hover
+  and only repeats what the label already says.
+- **A line chart tracks the pointer across the whole plot** rather than giving
+  each point its own hit area: a guide line and the tooltip follow the cursor
+  and snap to the nearest point, so there is no dead space between points and
+  nothing to aim at. The month labels below double as the keyboard path,
+  activating the identical guide and tooltip.
+- Series use semantic tones — completed teal, scheduled violet, cancelled plum
+  — and each series is named in the legend with its total.
+- An empty period renders an explanatory sentence, never an empty axis.
+- **Entrance animation is allowed, once and briefly.** Bars grow up
+  (`.darpe-bar-grow`, 500 ms, staggered 60 ms left to right); the revenue line
+  draws in and its area fades (`.darpe-line-draw` / `.darpe-area-fade`). A
+  dashboard is read many times a day, so anything longer becomes a delay.
+- Every animation class is switched off wholesale by the
+  `prefers-reduced-motion` block in `globals.css` — elements start at their
+  final state rather than animating.
+- **No chart may show invented data without saying so.** The finance chart is
+  the one place sample figures exist, and it carries a "Sample data" badge
+  whenever they are on.
+
+### The motif
+
+`src/components/shared/darpe-motif.tsx` is an original decorative mark — a
+meridian arc joining two points, for one language carried between two places.
+It is **not a logo**: DARPE's official mark has not been supplied, and the
+product uses a set textual wordmark until it is.
+
+It is used in exactly one place: centred inside a default `EmptyState`, at
+`size-12` and 40% primary. It was previously also floated behind the dashboard
+greeting and the sidebar wordmark at ~7% opacity, and in both places it read as
+an accidental drawing rather than as texture — **do not reintroduce it as a
+watermark behind headings or controls.** If it ever needs a second home, it
+must be one coherent composition inside a bounded area, never fragments behind
+interactive elements.
+
+Always `aria-hidden` and `pointer-events-none`, drawn in `currentColor`.
 
 ---
 
@@ -73,7 +120,7 @@ single exception, and only as small indicators.
 
 ```
 Brand (from the presentation)
-  deep violet      #482D79    text on light, primary buttons, active nav
+  deep violet      #482D79    reference only — too institutional as the accent
   mauve            #9968AE    decorative/large use only — 4.2:1, fails AA for text
   medium lavender  #B482CA    decorative only
   pale lavender    #ECDFF2    selected/hover tints, secondary badges
@@ -85,15 +132,68 @@ Applied tokens (globals.css :root)
   foreground       #2A2137    violet-tinted near-black (14.4:1 on background)
   card             #FFFFFF
   border / input   #E5DBEC    lavender-tinted 1px borders
-  primary          #482D79    10.9:1 on white; foreground #FAF7FC (10.3:1)
-  secondary/accent #ECDFF2    with #482D79 text (8.5:1)
+  primary          #7C3AED    white on it 5.7:1; as text on background 5.3:1
+  secondary/accent #ECDFF2    with #5B21B6 text
   muted-foreground #655D6E    5.9:1 on background — the darkest "muted" allowed
-  ring             #7C3AED    focus only — brighter for visibility (>5:1, needs 3:1)
+  ring             #7C3AED    focus ring, same as the accent
 ```
 
-Deep violet carries meaning; the brighter `#7C3AED` survives only as the focus
-ring. Never set text in mauve, medium lavender or lavender gray — they fail
-WCAG AA on these surfaces.
+The working accent is **`#7C3AED`**, not the presentation's deep `#482D79`.
+Deep violet is accessible but reads as institutional — the product looked like
+office software. The brand's brighter violet still passes comfortably: white on
+it is 5.7:1, and as text on the warm background 5.3:1. `#5B21B6` carries text on
+pale-lavender tints, where a lighter violet would not hold.
+
+Never set text in mauve, medium lavender or lavender gray — they fail WCAG AA
+on these surfaces.
+
+### Semantic accent tones
+
+Eight families, each **four steps** — surface / solid / foreground / line —
+defined in `globals.css` and chosen through `src/lib/tone.ts`.
+
+`solid` is the saturated step and exists because an earlier two-step palette
+looked washed out: dots, rails, chart bars and icon holders were being drawn in
+the same dark `fg` as the text beside them, so nothing stood out. **Markers use
+`solid`; text uses `fg`.** Never set text in `solid`.
+
+| Tone | Surface | Solid (markers) | Foreground (text) | Used for |
+| --- | --- | --- | --- | --- |
+| violet | `#F0E8FF` | `#7C3AED` | `#4C1D95` | English, scheduled series, identity |
+| blue | `#E6EFFF` | `#2563EB` | `#1E40AF` | French, student counts |
+| teal | `#DDF4EC` | `#0D9488` | `#0F5F4E` | Spanish, completed classes, revenue |
+| amber | `#FDEECF` | `#D97706` | `#8A4D08` | Italian, teachers, outstanding, sample badge |
+| rose | `#FDE6EE` | `#E11D63` | `#9C1F4C` | Japanese |
+| cyan | `#DDF0F9` | `#0891B2` | `#0D5871` | German |
+| moss | `#E7F2D9` | `#5B8C1F` | `#3F6212` | Swedish |
+| plum | `#F2E9F2` | `#8B5E86` | `#64405F` | Unrecognised language; cancelled series |
+
+Every `fg` on its own surface stays at or above 5.8:1.
+
+Rules: body text stays `foreground`, primary actions stay violet, and a tone
+never fills a whole card or column — it appears as a top rule, a left rail, a
+chip, a dot, or an icon holder. **Colour is always the second signal.** Every
+place a tone is used also states the meaning in text or an icon: a cancelled
+class is dashed and struck through, a completed one carries a tick, a language
+chip names its language beside the dot.
+
+### Language colours
+
+DARPE teaches **seven** languages, and each has its own tone — no two share a
+colour, and plum is deliberately left free to mean "not one of ours":
+
+English violet · Spanish teal · French blue · Italian amber · German cyan ·
+Japanese rose · **Swedish moss**
+
+`languageTone()` resolves deterministically — by stored code first (so renaming
+a language keeps its colour), then by name in English or Spanish (`Sueco`,
+`Svenska`), then plum. No migration and no stored colour: the mapping is
+presentation, and `src/lib/tone.test.ts` pins it, including that the seven stay
+distinct.
+
+The calendar's legend is derived from the sessions in the week on screen
+(`visibleLanguageLegend`), so it explains the colours actually present and
+never advertises a language the week does not contain.
 
 Status colors are used **only** for badges and never as UI chrome:
 
@@ -115,16 +215,22 @@ Italian  #D97706    German   #0284C7    Japanese  #DB2777
 
 ## 4. Typography
 
+Two roles, two faces, both self-hosted through `next/font`:
+
 ```
-UI          Geist via next/font, registered as --font-sans
-Page titles font-serif — "Iowan Old Style", Palatino, Georgia stack
+Instrument Sans   --font-sans / font-sans      everything operational
+Newsreader        --font-serif / font-serif    the editorial voice
 ```
 
-`font-serif` is for page `<h1>`s, the DARPE wordmark and the dashboard greeting
-only — never body text, section titles, labels or controls. It is a system
-stack on purpose: DARPE's official display face has not been confirmed, so no
-webfont is licensed or shipped until it is. Swapping it later is one token in
-`globals.css`.
+`font-serif` (Newsreader) appears in exactly four places: the DARPE wordmark,
+the dashboard greeting, page `<h1>`s, and the few figures a page is really
+about (the dashboard's overview numbers). Everywhere else — navigation, card
+and dialog titles (`font-heading`), tables, forms, badges, metadata — is
+Instrument Sans. Using the display face more widely is what would make it stop
+meaning anything.
+
+Hierarchy comes from size, weight, spacing and rules, not from wrapping every
+section in another card or attaching an icon to every label.
 
 Scale:
 
@@ -143,14 +249,36 @@ Numbers in stat cards: 24–30 px, weight 600, `tracking-tight`.
 ## 5. Spacing and layout
 
 - Page padding: `p-4` on mobile, `p-8` on desktop.
-- Content max width: **1280 px**, centered. Full-bleed layouts are not used.
+- Content is bounded and centred by `PageContainer` (`src/components/shared/page.tsx`):
+  **1440 px** for ordinary pages, **1680 px** for the calendar, whose week grid
+  genuinely needs the room. Nothing is full-bleed — on an ultrawide monitor a
+  search field or a table row must not stretch the width of the desk.
+- `PageHeader` renders the page title, its description and its actions; `Section`
+  gives a titled band with a top rule, for pages that would otherwise be a stack
+  of identical cards.
 - Vertical rhythm between sections: `space-y-8`.
 - Gap between cards in a grid: `gap-5`.
 - Card padding: `p-6`.
 - Border radius: `rounded-2xl` for cards, `rounded-md` for inputs and buttons.
 
-Shadows: **none by default**. Cards are defined by a 1 px border, not elevation.
-Shadow is reserved for overlays (dropdowns, dialogs, toasts).
+Shadows: cards are defined by a 1 px border, not elevation. `shadow-xs` is
+allowed on the calendar grid and as a hover response on interactive cards;
+anything heavier is reserved for overlays (dropdowns, dialogs, toasts). No
+gradients, no glassmorphism.
+
+### Interactive states
+
+One vocabulary for everything clickable, in `src/lib/interaction.ts`:
+
+- `INTERACTIVE_ROW` — list rows: pointer cursor, `bg-accent/40` on hover, the
+  same tint plus an inset focus ring on `focus-visible`.
+- `INTERACTIVE_CARD` — a card that is itself a link: border tint plus
+  `shadow-sm`, never a transform, so hovering never nudges its neighbours.
+- `INTERACTIVE_TABLE_ROW` — the same tint applied to a `<tr>`.
+
+All three use `focus-visible` (a mouse click leaves no ring) and end in
+`motion-reduce:transition-none`. Rows are `min-h-11` so touch targets stay at
+44 px. Never introduce a fourth hover style locally.
 
 ---
 
@@ -163,7 +291,16 @@ Breakpoint behaviour:
 
 | Element | Mobile (`< lg`) | Desktop (`≥ lg`) |
 | --- | --- | --- |
-| Navigation | Fixed bottom bar, 4 items (Home, Calendar, Students, Teachers) | Left sidebar, 240 px, grouped |
+| Navigation | Fixed bottom bar, 4 items (Home, Calendar, Students, Teachers) | Left sidebar, 240 px, grouped, **fixed** |
+
+The app shell is `fixed inset-0`, so it is pinned to the viewport and `main` is
+the only scrolling surface. The sidebar therefore never scrolls away.
+
+**Do not replace this with `h-full` or `h-dvh`.** Both depend on an unbroken
+chain of definite heights from `html` down; anything that interrupts the chain
+silently turns the shell back into a content-height box, the document grows, and
+a second scrollbar appears beside the one inside `main`. Taking the shell out of
+flow removes the dependency entirely.
 | Tables | Essential columns only | All columns |
 | Forms | Single column | Two columns where natural |
 | Main content | `pb-20` to clear bottom nav | `pb-0` |
@@ -197,8 +334,31 @@ Conventions:
 - **Badges** — status only. Never for counts or decoration.
 - **Cards** — group related content. Header holds a `text-sm` title plus optional
   `text-xs` subtitle.
-- **Empty states** — dashed border, centered muted text, one sentence explaining
-  what to do next. Never an empty table.
+- **Empty states** — always `EmptyState` (`src/components/shared/empty-state.tsx`),
+  never an empty table. Two tones, and the difference matters: `default` (dashed
+  border, motif, centred) is for a list that is empty because nothing has been
+  created yet and the user should act; `compact` is a single quiet line, for
+  places where emptiness is ordinary and unremarkable — a day with no classes,
+  nothing awaiting completion. Wrapping the ordinary case in a large dashed box
+  makes a calm day look like a problem.
+- **Forms** — anything longer than about four fields is split with
+  `FormSection` inside a `FormCard`, ending in a tinted `FormActions` bar so the
+  submit button is in the same place on every form. Group headings sit **above**
+  their fields, never in a side column: the label column was always far shorter
+  than the fields beside it, leaving the card empty down its left edge. Pair
+  related fields in `sm:grid-cols-2` and give selects `w-full`, so no field
+  trails off into empty space.
+- **Record lists** — students and teachers are **card grids**, not tables
+  (`sm:grid-cols-2 xl:grid-cols-3`). A table forced a person's name, language,
+  level, teacher and status into columns that had to be read across and then
+  hidden one by one at each breakpoint; a card groups them around the person
+  and works unchanged from a phone to an ultrawide monitor. Each card: avatar,
+  serif name, one secondary line, status badge, language chip, and a footer
+  fact above a rule. The whole card is the link.
+- **Filter bars** — search and status controls sit on `bg-card` with
+  `shadow-xs`, and search carries a leading magnifier icon. On the page
+  background with a bare border they read as drawn rectangles rather than
+  fields.
 - **Toasts** (sonner) — confirm every mutation. Success is a short sentence in
   sentence case; errors say what happened, not "Error 500".
 - **Icons** — lucide-react, `size-4` inline, `strokeWidth` 1.8 default / 2.2 active.

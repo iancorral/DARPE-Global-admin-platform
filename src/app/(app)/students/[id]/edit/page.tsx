@@ -3,6 +3,12 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { getStudentById, getStudentFormOptions } from "@/features/students/queries";
 import { StudentForm } from "@/features/students/components/student-form";
+import {
+  FormLayout,
+  FormNote,
+  PageContainer,
+  PageHeader,
+} from "@/components/shared/page";
 
 export default async function EditStudentPage({
   params,
@@ -26,15 +32,34 @@ export default async function EditStudentPage({
       : teachers;
 
   return (
-    <div className="p-4 lg:p-8">
+    <PageContainer>
       <Link
         href={`/students/${student.id}`}
-        className="mb-6 inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+        className="mb-6 inline-flex min-h-11 items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="size-4" /> {student.firstName} {student.lastName}
       </Link>
 
-      <h1 className="mb-6 font-serif text-2xl font-semibold tracking-tight">Edit student</h1>
+      <PageHeader title="Edit student" />
+      <FormLayout
+        aside={
+          <>
+            <FormNote title="Changing status">
+              <p>
+                Moving a student to Paused or Archived keeps every class they already
+                have. It only stops new ones being scheduled, and monthly generation
+                skips them from then on.
+              </p>
+            </FormNote>
+            <FormNote title="Changing language or teacher">
+              <p>
+                Neither touches classes that already exist. Their language and teacher were
+                recorded when each class was created, so history stays as it happened.
+              </p>
+            </FormNote>
+          </>
+        }
+      >
       <StudentForm
         languages={languages}
         teachers={teacherOptions}
@@ -52,6 +77,7 @@ export default async function EditStudentPage({
           goal: student.goal ?? "",
         }}
       />
-    </div>
+      </FormLayout>
+    </PageContainer>
   );
 }

@@ -27,7 +27,15 @@ import {
   todayInZone,
 } from "@/lib/datetime";
 
-const VISIBLE_DAYS = 6;
+/*
+ * Monday through Sunday.
+ *
+ * The data model and generation have always supported Sunday; only the view
+ * left it out, which meant a Sunday class existed and was invisible — the page
+ * had to warn that sessions were being hidden. Most teaching is online and a
+ * weekend class is a real possibility, so the week is now shown whole.
+ */
+const VISIBLE_DAYS = 7;
 
 export default async function CalendarPage({
   searchParams,
@@ -73,9 +81,6 @@ export default async function CalendarPage({
     };
   });
 
-  const visibleDates = new Set(days.map((day) => day.date));
-  const hiddenCount = sessions.filter((session) => !visibleDates.has(session.date)).length;
-
   // A student id from the address bar is only a suggestion: it has to be one of
   // the students who may actually be given a class, or the form ignores it.
   const requestedStudentId = params.success
@@ -117,10 +122,15 @@ export default async function CalendarPage({
   const generationMonth = Number(weekStart.slice(5, 7));
 
   return (
-    // Fills the shell rather than measuring the viewport: the layout already bounds
-    // the space, so this only has to claim it and let the agenda inside scroll.
-    // From `lg` up it goes back to an ordinary block that grows with the week grid.
-    <div className="flex min-h-0 flex-1 flex-col p-4 lg:block lg:p-8">
+    /*
+     * No maximum and tight gutters on desktop: the week grid is the tool staff
+     * work in, seven columns have to share the width, and every pixel of column
+     * is legibility. Nothing else on the page competes for the space.
+     *
+     * The `lg:` rules apply only where this is a normal block; the phone layout
+     * keeps the flex bounding the mobile agenda depends on.
+     */
+    <div className="flex min-h-0 flex-1 flex-col p-4 lg:block lg:px-6 lg:py-6">
       <div className="mb-4 flex shrink-0 flex-wrap items-start justify-between gap-4 lg:mb-6">
         <div>
           <h1 className="font-serif text-2xl font-semibold tracking-tight">Calendar</h1>
@@ -157,16 +167,10 @@ export default async function CalendarPage({
         preselectedStudentId={preselected}
       />
 
-      {hiddenCount > 0 && (
-        <p className="mt-3 shrink-0 text-xs text-muted-foreground">
-          {hiddenCount} session{hiddenCount === 1 ? "" : "s"} fall on Sunday and are not shown in
-          this Monday–Saturday view.
-        </p>
-      )}
-
       {sessions.length === 0 && (
         <p className="mt-3 shrink-0 text-xs text-muted-foreground">
-          No sessions this week. Recurring schedules become sessions once the month is generated.
+          No classes this week. Add one from the grid, or generate the month if recurring
+          schedules exist.
         </p>
       )}
     </div>

@@ -3,7 +3,9 @@
 import { useRef, useState, type KeyboardEvent } from "react";
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { TONE_CLASSES, languageTone } from "@/lib/tone";
 import { placeDaySessions } from "../layout";
+import { isOutsideBusinessHour } from "../business-hours";
 import {
   formatSlotTime,
   moveGridFocus,
@@ -17,7 +19,12 @@ import { sessionCardId } from "../element-ids";
 import type { CalendarSession, MovingSession } from "../queries";
 import type { CalendarDay } from "./calendar-day";
 
-const HOUR_HEIGHT = 56;
+/*
+ * An hour tall enough for a card to hold three legible lines, and no taller:
+ * the grid gains its presence from filling the width, not from growing down
+ * the page. At 76px a normal working day no longer fitted on a laptop screen.
+ */
+const HOUR_HEIGHT = 60;
 /** Move mode stretches the grid so half-hour targets stay comfortably clickable. */
 const MOVE_HOUR_HEIGHT = 80;
 /**
@@ -150,22 +157,47 @@ export function WeekGrid({
   }
 
   return (
-    <div className="overflow-x-auto rounded-xl border bg-card">
-      <div className="min-w-[860px]">
+    /*
+     * Bounded to the viewport and scrolled internally, the way a calendar
+     * application behaves: the week always fits the screen whatever the laptop,
+     * and the day headers stay put while the hours move under them. Growing to
+     * the full height of the day instead pushed the page into a scroll that
+     * took the headers with it.
+     */
+    <div className="w-full overflow-auto rounded-xl border bg-card shadow-xs lg:max-h-[calc(100dvh-15rem)]">
+      <div className="w-full min-w-215">
         <div
-          className="grid border-b"
-          style={{ gridTemplateColumns: `60px repeat(${days.length}, minmax(0, 1fr))` }}
+          className="sticky top-0 z-20 grid border-b bg-card"
+          style={{ gridTemplateColumns: `48px repeat(${days.length}, minmax(0, 1fr))` }}
         >
           <div />
           {days.map((day) => (
-            <div key={day.date} className="border-l px-2 py-3 text-center">
+            <div
+              key={day.date}
+              className={cn(
+                "border-l px-2 py-2.5 text-center",
+                // Today's header gets a tint and a rule under it; the column
+                // itself stays plain, so the marker says "this is today"
+                // without painting a seventh of the week violet.
+                day.isToday && "border-b-2 border-b-primary bg-primary/8"
+              )}
+            >
               <span
                 className={cn(
-                  "text-xs font-medium",
-                  day.isToday ? "text-violet-700" : "text-muted-foreground"
+                  "inline-flex items-baseline gap-1.5 rounded-full px-2.5 py-1",
+                  day.isToday && "bg-primary text-primary-foreground shadow-xs"
                 )}
               >
-                {day.label} {day.dayNumber}
+                <span
+                  className={cn(
+                    "text-[11px] font-semibold tracking-wide uppercase",
+                    !day.isToday && "text-muted-foreground"
+                  )}
+                >
+                  {day.label}
+                </span>
+                <span className="font-serif text-base font-semibold">{day.dayNumber}</span>
+                {day.isToday && <span className="sr-only">(today)</span>}
               </span>
             </div>
           ))}
@@ -178,14 +210,24 @@ export function WeekGrid({
           role="group"
           aria-label="Week grid"
           className="grid focus:outline-none"
-          style={{ gridTemplateColumns: `60px repeat(${days.length}, minmax(0, 1fr))` }}
+          // The first hour label is centred on the grid's top edge, so half of
+          // it used to sit under the sticky header. This gives it room.
+          style={{
+            gridTemplateColumns: `48px repeat(${days.length}, minmax(0, 1fr))`,
+            paddingTop: 10,
+          }}
           onKeyDown={handleGridKeyDown}
         >
           <div style={{ height: gridHeight }}>
             {hours.map((hour) => (
               <div
                 key={hour}
-                className="relative pr-2 text-right text-[10px] text-muted-foreground"
+                className={cn(
+                  "relative pr-2 text-right text-[11px] tabular-nums",
+                  isOutsideBusinessHour(hour)
+                    ? "font-normal text-muted-foreground/60"
+                    : "font-medium text-muted-foreground"
+                )}
                 style={{ height: hourHeight }}
               >
                 <span className="absolute top-0 right-2 -translate-y-1/2">
@@ -203,13 +245,22 @@ export function WeekGrid({
             return (
               <div
                 key={day.date}
-                className={cn("relative border-l", day.isToday && "bg-violet-50/40")}
+                className={cn(
+                  "relative border-l",
+                  // A hairline at the top of today's column, not a wash over it.
+                  day.isToday && "border-t-2 border-t-primary"
+                )}
                 style={{ height: gridHeight }}
               >
                 {hours.map((hour) => (
                   <div
                     key={hour}
-                    className="border-b border-border/50"
+                    // Outside the academy's normal day: still fully bookable,
+                    // just quieter, so the working day is legible at a glance.
+                    className={cn(
+                      "border-b border-border/50",
+                      isOutsideBusinessHour(hour) && "bg-muted/40"
+                    )}
                     style={{ height: hourHeight }}
                   />
                 ))}
@@ -245,6 +296,10 @@ export function WeekGrid({
                   const isCancelled = session.status === "CANCELLED";
                   const isCompleted = session.status === "COMPLETED";
                   const isBeingMoved = movingSession?.id === session.id;
+                  // The language colours the card; the status decides how alive
+                  // it looks. A cancelled class drops the colour entirely so it
+                  // cannot be mistaken for one that is still happening.
+                  const tone = TONE_CLASSES[languageTone({ name: session.languageName })];
 
                   return (
                     <button
@@ -257,17 +312,20 @@ export function WeekGrid({
                       aria-hidden={isMoving ? true : undefined}
                       onClick={(event) => onOpenSession(session, event.currentTarget)}
                       className={cn(
-                        "pointer-events-auto absolute overflow-hidden rounded-md border border-l-2 px-2 py-1 text-left transition-colors",
+                        "pointer-events-auto absolute overflow-hidden rounded-lg border border-l-4 px-2 py-1 text-left leading-tight transition-shadow motion-reduce:transition-none",
                         isMoving && "pointer-events-none",
                         isMoving && !isBeingMoved && "opacity-40",
                         isBeingMoved && "z-10 ring-2 ring-violet-600 ring-offset-1",
                         isCancelled &&
                           "border-dashed border-l-muted-foreground/40 bg-muted/50 text-muted-foreground hover:bg-muted",
-                        isCompleted &&
-                          "border-l-muted-foreground/30 bg-muted/30 text-muted-foreground hover:bg-muted/60",
-                        !isCancelled &&
-                          !isCompleted &&
-                          "border-l-violet-500 bg-card hover:border-violet-300 hover:bg-violet-50"
+                        // Completed keeps its language marker but sits back:
+                        // muted surface, and the tick below says why.
+                        isCompleted && ["bg-muted/40 text-muted-foreground", tone.line],
+                        !isCancelled && !isCompleted && [
+                          tone.surface,
+                          tone.line,
+                          "hover:shadow-xs motion-reduce:transition-none",
+                        ]
                       )}
                       style={{
                         top: placement.top + 2,
@@ -278,21 +336,21 @@ export function WeekGrid({
                     >
                       <span
                         className={cn(
-                          "flex items-center gap-1 truncate text-[11px] font-medium",
+                          "flex items-center gap-1 truncate text-[13px] leading-tight font-semibold",
                           isCancelled && "line-through",
                           !isCancelled && !isCompleted && "text-foreground"
                         )}
                       >
-                        {isCompleted && <Check className="size-3 shrink-0" />}
+                        {isCompleted && <Check className="size-3.5 shrink-0" />}
                         <span className="truncate">
                           {session.participants[0]?.studentName ?? "Class"}
                         </span>
                       </span>
-                      <span className="block truncate text-[10px] text-muted-foreground">
+                      <span className="block truncate text-[11px] text-muted-foreground">
                         {session.startLabel} · {session.teacherName.split(" ")[0]}
                       </span>
-                      {placement.height > 54 && (
-                        <span className="block truncate text-[10px] text-muted-foreground">
+                      {placement.height > 58 && (
+                        <span className="block truncate text-[11px] text-muted-foreground">
                           {session.languageName}
                         </span>
                       )}

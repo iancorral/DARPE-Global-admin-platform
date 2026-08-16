@@ -20,9 +20,15 @@ describe("greetingForHour", () => {
 });
 
 describe("contextLine", () => {
-  it("wraps the formatted academy date", () => {
-    expect(DASHBOARD_COPY.contextLine("Saturday, August 15")).toBe(
-      "Saturday, August 15 · Here's how DARPE is doing today."
+  it("reports the month's taught and scheduled classes", () => {
+    expect(DASHBOARD_COPY.contextLine("Saturday, August 15", "August", 24, 18)).toBe(
+      "Saturday, August 15 · 24 classes taught in August, 18 still scheduled."
+    );
+  });
+
+  it("keeps a single class singular", () => {
+    expect(DASHBOARD_COPY.contextLine("Sunday, August 2", "August", 1, 0)).toBe(
+      "Sunday, August 2 · 1 class taught in August, 0 still scheduled."
     );
   });
 });

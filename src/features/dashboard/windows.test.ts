@@ -44,4 +44,29 @@ describe("dashboardWindows", () => {
     expect(windows.todayDate).toBe("2026-08-16");
     expect(windows.weekStartDate).toBe("2026-08-10");
   });
+
+  it("spans the academy month", () => {
+    const windows = dashboardWindows(new Date("2026-08-15T12:00:00Z"), TZ);
+
+    expect(windows.monthStartDate).toBe("2026-08-01");
+    expect(windows.monthStart.toISOString()).toBe("2026-08-01T06:00:00.000Z");
+    expect(windows.nextMonthStart.toISOString()).toBe("2026-09-01T06:00:00.000Z");
+  });
+
+  it("rolls the month window over the end of the year", () => {
+    const windows = dashboardWindows(new Date("2026-12-20T12:00:00Z"), TZ);
+
+    expect(windows.monthStartDate).toBe("2026-12-01");
+    expect(windows.nextMonthStart.toISOString()).toBe("2027-01-01T06:00:00.000Z");
+  });
+
+  it("uses the academy month near midnight on the first of a month", () => {
+    // 03:00 UTC on Sep 1 is still 21:00 on Aug 31 in Chihuahua, so the month
+    // window must still be August.
+    const windows = dashboardWindows(new Date("2026-09-01T03:00:00Z"), TZ);
+
+    expect(windows.todayDate).toBe("2026-08-31");
+    expect(windows.monthStartDate).toBe("2026-08-01");
+    expect(windows.nextMonthStart.toISOString()).toBe("2026-09-01T06:00:00.000Z");
+  });
 });

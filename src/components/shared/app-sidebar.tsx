@@ -43,9 +43,17 @@ export function AppSidebar({ userName, userRole }: { userName: string; userRole:
 
   return (
     <>
-      <aside className="hidden w-60 shrink-0 border-r bg-sidebar p-4 lg:flex lg:flex-col">
+      <aside className="hidden w-60 shrink-0 overflow-y-auto border-r bg-sidebar p-4 lg:flex lg:flex-col">
+        {/*
+          A textual wordmark, not a logo: DARPE's official mark has not been
+          supplied, and inventing one would be worse than setting the name well.
+          No motif here — as a faint watermark behind the name it read as an
+          accidental drawing rather than as brand texture.
+        */}
         <div className="px-3 py-4">
-          <p className="font-serif text-lg font-semibold tracking-[0.18em] text-primary">DARPE</p>
+          <p className="font-serif text-xl font-semibold tracking-[0.16em] text-primary">
+            DARPE
+          </p>
           <p className="text-[10px] uppercase tracking-[0.28em] text-muted-foreground">
             Global admin
           </p>

@@ -1,6 +1,10 @@
 import Link from "next/link";
+import { EmptyState } from "@/components/shared/empty-state";
+import { Section } from "@/components/shared/page";
+import { INTERACTIVE_ROW } from "@/lib/interaction";
+import { TONE_CLASSES, languageTone } from "@/lib/tone";
+import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ATTENDANCE_OPTIONS } from "@/features/sessions/schemas";
 import type { ClassStatus } from "@/generated/prisma/client";
 import type { StudentSessionRow, StudentSessions } from "../queries";
@@ -24,53 +28,46 @@ const ATTENDANCE_LABELS = Object.fromEntries(
 
 /**
  * The student's concrete classes: what is coming and what already happened.
- * Server-rendered, read-only; each row links to the calendar week that holds
- * the class, where all the actions live.
+ * Server-rendered and read-only; each row links to the calendar week that
+ * holds the class, where all the actions live.
  */
 export function StudentClasses({ sessions }: { sessions: StudentSessions }) {
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">Upcoming classes</CardTitle>
-          {sessions.upcomingCount > sessions.upcoming.length && (
-            <p className="text-xs text-muted-foreground">
-              Next {sessions.upcoming.length} of {sessions.upcomingCount} — later weeks are on
-              the calendar.
-            </p>
-          )}
-        </CardHeader>
-        <CardContent>
-          {sessions.upcoming.length === 0 ? (
-            <EmptyNote>
-              No upcoming classes. Schedule one from the calendar, or generate the month if a
-              recurring schedule exists.
-            </EmptyNote>
-          ) : (
-            <SessionRows rows={sessions.upcoming} showAttendance={false} />
-          )}
-        </CardContent>
-      </Card>
+    <>
+      <Section
+        title="Upcoming classes"
+        description={
+          sessions.upcomingCount > sessions.upcoming.length
+            ? `Next ${sessions.upcoming.length} of ${sessions.upcomingCount} — later weeks are on the calendar.`
+            : undefined
+        }
+      >
+        {sessions.upcoming.length === 0 ? (
+          <EmptyState tone="compact">
+            No upcoming classes. Schedule one from the calendar.
+          </EmptyState>
+        ) : (
+          <SessionRows rows={sessions.upcoming} showAttendance={false} />
+        )}
+      </Section>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">Class history</CardTitle>
-          {sessions.historyCount > sessions.history.length && (
-            <p className="text-xs text-muted-foreground">
-              Latest {sessions.history.length} of {sessions.historyCount} — earlier weeks are on
-              the calendar.
-            </p>
-          )}
-        </CardHeader>
-        <CardContent>
-          {sessions.history.length === 0 ? (
-            <EmptyNote>No classes yet. History appears once a class date has passed.</EmptyNote>
-          ) : (
-            <SessionRows rows={sessions.history} showAttendance />
-          )}
-        </CardContent>
-      </Card>
-    </div>
+      <Section
+        title="Class history"
+        description={
+          sessions.historyCount > sessions.history.length
+            ? `Latest ${sessions.history.length} of ${sessions.historyCount} — earlier weeks are on the calendar.`
+            : undefined
+        }
+      >
+        {sessions.history.length === 0 ? (
+          <EmptyState tone="compact">
+            No classes yet. History appears once a class has taken place.
+          </EmptyState>
+        ) : (
+          <SessionRows rows={sessions.history} showAttendance />
+        )}
+      </Section>
+    </>
   );
 }
 
@@ -82,11 +79,24 @@ function SessionRows({
   showAttendance: boolean;
 }) {
   return (
-    <ul className="divide-y">
+    <ul className="divide-y overflow-hidden rounded-xl border bg-card">
       {rows.map((row) => (
         <li key={row.id}>
-          <Link href={row.weekHref} className="group flex items-center gap-3 py-2.5 text-sm">
-            <span className="w-24 shrink-0 tabular-nums text-muted-foreground">
+          <Link
+            href={row.weekHref}
+            className={cn(
+              "group flex min-h-11 items-center gap-3 px-4 py-3 text-sm",
+              INTERACTIVE_ROW
+            )}
+          >
+            <span
+              aria-hidden="true"
+              className={cn(
+                "h-8 w-1 shrink-0 rounded-full",
+                TONE_CLASSES[languageTone({ name: row.languageName })].dot
+              )}
+            />
+            <span className="w-20 shrink-0 tabular-nums text-muted-foreground">
               {row.dateLabel}
             </span>
             <span className="min-w-0 flex-1">
@@ -107,13 +117,5 @@ function SessionRows({
         </li>
       ))}
     </ul>
-  );
-}
-
-function EmptyNote({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
-      {children}
-    </p>
   );
 }

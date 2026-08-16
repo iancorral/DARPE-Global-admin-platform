@@ -19,29 +19,36 @@ export const DASHBOARD_COPY = {
   greetingMorning: "Good morning",
   greetingAfternoon: "Good afternoon",
   greetingEvening: "Good evening",
-  /** `dateLabel` arrives already formatted for the academy timezone. */
-  contextLine: (dateLabel: string) => `${dateLabel} · Here's how DARPE is doing today.`,
+  /**
+   * How the month is going, in one line. Both numbers count classes whose
+   * start falls in the current academy month: `completed` is what happened,
+   * `scheduled` is what is still on the books. `dateLabel` and `monthLabel`
+   * arrive already formatted for the academy timezone.
+   */
+  contextLine: (dateLabel: string, monthLabel: string, completed: number, scheduled: number) =>
+    `${dateLabel} · ${completed} ${completed === 1 ? "class" : "classes"} taught in ` +
+    `${monthLabel}, ${scheduled} still scheduled.`,
   openCalendar: "Open calendar",
 
   todayTitle: "Today at DARPE",
-  todayEmpty: "No classes today. A quiet day is still a day at DARPE.",
+  todayEmpty: "No classes today.",
+  todayCount: (count: number) => `${count} ${count === 1 ? "class" : "classes"}`,
 
   attentionTitle: "Needs attention",
   attentionDescription:
-    "Past classes still marked as scheduled. Complete or cancel them so the records reflect what happened.",
-  attentionEmpty: "Nothing needs attention. Every past class is completed or cancelled.",
+    "These classes have finished but are still marked as scheduled. Complete or cancel them so the records reflect what happened.",
+  attentionEmpty: "Nothing to resolve. Every class that has finished is completed or cancelled.",
   attentionMore: (count: number) =>
     `And ${count} more — open the calendar weeks above to work through them.`,
 
-  upcomingTitle: "Coming up",
-  upcomingEmpty:
-    "No upcoming classes yet. Recurring schedules become classes once the month is generated.",
-
-  overviewTitle: "Operational overview",
-  overviewThisWeek: "Classes this week",
   overviewActiveStudents: "Active students",
   overviewTrialDetail: (count: number) => `+ ${count} trial`,
   overviewActiveTeachers: "Active teachers",
-  overviewWeekDetail: (completed: number, cancelled: number) =>
-    `${completed} completed · ${cancelled} cancelled`,
+
+  kpiTaughtThisMonth: "Classes taught",
+  kpiStillScheduled: "Still scheduled",
+  kpiMonthDetail: (monthLabel: string) => `in ${monthLabel}`,
+
+  activityTitle: "Class activity",
+  activityDescription: (monthLabel: string) => `${monthLabel}, by week`,
 } as const;

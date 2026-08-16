@@ -11,6 +11,7 @@ import {
   type MinuteRange,
 } from "../scheduling";
 import { createPositionId } from "../element-ids";
+import { isOutsideBusinessHours } from "../business-hours";
 
 export type CreatePosition = {
   date: string;
@@ -74,6 +75,10 @@ export function CreatePositions({
         // Only decides where there is room for the wording, never whether this
         // position may be used.
         const covered = isPositionCovered(startMinutes, daySessions);
+        // Bookable exactly like any other time — the wording and the amber tint
+        // only say that it falls outside the academy's normal day, which
+        // happens whenever a student is in another time zone.
+        const outsideHours = isOutsideBusinessHours(startMinutes);
         const position = { date, startMinutes };
         const isTabbable =
           tabbable?.date === date && tabbable.startMinutes === startMinutes;
@@ -84,15 +89,19 @@ export function CreatePositions({
             id={createSlotDomId(position)}
             type="button"
             tabIndex={isTabbable ? 0 : -1}
-            aria-label={`Add a class on ${dayLabel} at ${time}`}
+            aria-label={
+              outsideHours
+                ? `Add a class on ${dayLabel} at ${time}, outside normal hours`
+                : `Add a class on ${dayLabel} at ${time}`
+            }
             onFocus={() => onFocusPosition(position)}
             onClick={(event) =>
               onSelect({ date, startMinutes, dayLabel }, event.currentTarget)
             }
             className={cn(
-              "group absolute right-0 left-0 z-0 flex items-center transition-colors",
-              "hover:bg-violet-50/80",
-              "focus-visible:ring-2 focus-visible:ring-violet-600 focus-visible:ring-inset focus-visible:outline-none"
+              "group absolute right-0 left-0 z-0 flex items-center transition-colors motion-reduce:transition-none",
+              outsideHours ? "hover:bg-tone-amber/70" : "hover:bg-tone-violet/70",
+              "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset focus-visible:outline-none"
             )}
             style={{
               top: offsetFromMinutes(startMinutes, dayStartMinutes, pixelsPerHour),
@@ -102,16 +111,22 @@ export function CreatePositions({
             {!covered && (
               <span
                 aria-hidden="true"
-                className="ml-1.5 flex items-center gap-1 truncate text-[10px] font-medium text-violet-700 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+                className={cn(
+                  "ml-1.5 flex items-center gap-1 truncate text-[10px] font-medium opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 motion-reduce:transition-none",
+                  outsideHours ? "text-tone-amber-fg" : "text-tone-violet-fg"
+                )}
               >
                 <Plus className="size-3 shrink-0" strokeWidth={2.2} />
-                Add class
+                {outsideHours ? "Add (outside hours)" : "Add class"}
               </span>
             )}
 
             <span
               aria-hidden="true"
-              className="absolute inset-y-0 right-0 flex w-6 items-center justify-center text-violet-700 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+              className={cn(
+                "absolute inset-y-0 right-0 flex w-6 items-center justify-center opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 motion-reduce:transition-none",
+                outsideHours ? "text-tone-amber-fg" : "text-tone-violet-fg"
+              )}
             >
               <Plus className="size-3.5" strokeWidth={2.2} />
             </span>

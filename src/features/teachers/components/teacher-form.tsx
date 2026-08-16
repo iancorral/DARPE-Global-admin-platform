@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import {
   Form, FormControl, FormField, FormItem, FormLabel, FormMessage,
 } from "@/components/ui/form";
+import { FormActions, FormCard, FormSection } from "@/components/shared/page";
 import { createTeacher, updateTeacher } from "../actions";
 import { teacherFormSchema, type TeacherFormInput } from "../schemas";
 
@@ -56,7 +57,9 @@ export function TeacherForm({ languages, teacher }: Props) {
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="max-w-lg space-y-6">
+      <form onSubmit={form.handleSubmit(onSubmit)}>
+        <FormCard>
+        <FormSection title="Who they are" description="The name staff will search for.">
         <div className="grid gap-4 sm:grid-cols-2">
           <FormField
             control={form.control}
@@ -81,7 +84,12 @@ export function TeacherForm({ languages, teacher }: Props) {
             )}
           />
         </div>
+        </FormSection>
 
+        <FormSection
+          title="Contact"
+          description="Optional. Teachers have no account — this is for staff to reach them."
+        >
         <FormField
           control={form.control}
           name="email"
@@ -106,13 +114,19 @@ export function TeacherForm({ languages, teacher }: Props) {
           )}
         />
 
+        </FormSection>
+
+        <FormSection
+          title="Languages taught"
+          description="Only these languages can be scheduled with this teacher."
+        >
         <FormField
           control={form.control}
           name="languageIds"
           render={() => (
             <FormItem>
               <FormLabel>Languages taught</FormLabel>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {languages.map((language) => (
                   <FormField
                     key={language.id}
@@ -143,7 +157,10 @@ export function TeacherForm({ languages, teacher }: Props) {
           )}
         />
 
+        </FormSection>
+
         {teacher && (
+          <FormSection title="Availability" description="Whether new classes can be booked.">
           <div className="space-y-2 rounded-md border p-4">
             <div className="flex items-center gap-2">
               <Checkbox
@@ -160,9 +177,10 @@ export function TeacherForm({ languages, teacher }: Props) {
               scheduling. Classes they already have are kept.
             </p>
           </div>
+          </FormSection>
         )}
 
-        <div className="flex gap-3">
+        <FormActions>
           <Button type="submit" disabled={form.formState.isSubmitting}>
             {form.formState.isSubmitting
               ? "Saving..."
@@ -173,7 +191,8 @@ export function TeacherForm({ languages, teacher }: Props) {
           <Button type="button" variant="outline" onClick={() => router.back()}>
             Cancel
           </Button>
-        </div>
+        </FormActions>
+        </FormCard>
       </form>
     </Form>
   );
