@@ -10,15 +10,19 @@ import {
   type CreationSlot,
   type MinuteRange,
 } from "../scheduling";
+import { createPositionId } from "../element-ids";
 
 export type CreatePosition = {
   date: string;
   startMinutes: number;
 };
 
-/** Stable id so focus can be moved to a position, and back to it afterwards. */
+/**
+ * This grid's id for a position. Scoped to the grid, because the agenda draws the
+ * same date and time and both trees are mounted at once.
+ */
 export function createSlotDomId(position: CreatePosition): string {
-  return `create-slot-${position.date}-${position.startMinutes}`;
+  return createPositionId("grid", position.date, position.startMinutes);
 }
 
 type Props = {
@@ -32,7 +36,8 @@ type Props = {
   /** The one position in the whole grid that is in the tab order. */
   tabbable: CreatePosition | null;
   onFocusPosition: (position: CreatePosition) => void;
-  onSelect: (slot: CreationSlot) => void;
+  /** The button is handed over so focus can return to this exact control. */
+  onSelect: (slot: CreationSlot, trigger: HTMLElement) => void;
 };
 
 /**
@@ -81,7 +86,9 @@ export function CreatePositions({
             tabIndex={isTabbable ? 0 : -1}
             aria-label={`Add a class on ${dayLabel} at ${time}`}
             onFocus={() => onFocusPosition(position)}
-            onClick={() => onSelect({ date, startMinutes, dayLabel })}
+            onClick={(event) =>
+              onSelect({ date, startMinutes, dayLabel }, event.currentTarget)
+            }
             className={cn(
               "group absolute right-0 left-0 z-0 flex items-center transition-colors",
               "hover:bg-violet-50/80",

@@ -6,7 +6,7 @@ import { UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+  Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -37,6 +37,7 @@ import {
   type CreationSlot,
 } from "../scheduling";
 import { DURATION_OPTIONS } from "../schemas";
+import { REQUEST_FAILED_MESSAGE } from "../request-feedback";
 import type { CreateClassStudent, CreateClassTeacher } from "../queries";
 
 const DEFAULT_DURATION = "60";
@@ -68,6 +69,8 @@ type Props = {
    */
   initialDurationMinutes?: number | null;
   initialEndsOn?: string | null;
+  /** Sends focus back to the calendar position that opened this. */
+  finalFocus: () => HTMLElement | true;
   onOpenChange: (open: boolean) => void;
 };
 
@@ -94,11 +97,12 @@ export function CreateClassDialog({
   initialStudentId,
   initialDurationMinutes,
   initialEndsOn,
+  finalFocus,
   onOpenChange,
 }: Props) {
   return (
     <Dialog open={slot !== null} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md" finalFocus={finalFocus}>
         {slot && (
           <CreateClassForm
             key={`${slot.date}-${slot.startMinutes}`}
@@ -222,36 +226,43 @@ function CreateClassForm({
 
   async function handleCreate() {
     setIsPending(true);
-    const result =
-      mode === "weekly"
-        ? await createWeeklySeries({
-            studentId,
-            teacherId,
-            startsOn: slot.date,
-            endsOn,
-            startTime,
-            durationMinutes: Number(durationMinutes),
-          })
-        : await createSession({
-            studentId,
-            teacherId,
-            ...creationInputFor(slot),
-            durationMinutes: Number(durationMinutes),
-          });
-    setIsPending(false);
+    try {
+      const result =
+        mode === "weekly"
+          ? await createWeeklySeries({
+              studentId,
+              teacherId,
+              startsOn: slot.date,
+              endsOn,
+              startTime,
+              durationMinutes: Number(durationMinutes),
+            })
+          : await createSession({
+              studentId,
+              teacherId,
+              ...creationInputFor(slot),
+              durationMinutes: Number(durationMinutes),
+            });
 
-    if (!result.success) {
-      toast.error(result.error);
-      return;
+      if (!result.success) {
+        toast.error(result.error);
+        return;
+      }
+
+      toast.success(
+        mode === "weekly"
+          ? `${seriesDates.length} weekly classes created`
+          : "Class created"
+      );
+      router.refresh();
+      onDone();
+    } catch {
+      // The dialog stays open with everything still filled in, so the same class
+      // can be submitted again rather than typed again.
+      toast.error(REQUEST_FAILED_MESSAGE);
+    } finally {
+      setIsPending(false);
     }
-
-    toast.success(
-      mode === "weekly"
-        ? `${seriesDates.length} weekly classes created`
-        : "Class created"
-    );
-    router.refresh();
-    onDone();
   }
 
   if (students.length === 0) {
@@ -263,15 +274,17 @@ function CreateClassForm({
             {slot.dayLabel} · {startTime}
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-3 rounded-md border border-dashed p-6 text-center">
-          <p className="text-sm text-muted-foreground">
-            No active or trial students yet. Add a student and you will come straight back
-            to this time.
-          </p>
-          <Button variant="outline" onClick={handleCreateStudent}>
-            <UserPlus className="size-4" /> Create new student
-          </Button>
-        </div>
+        <DialogBody>
+          <div className="space-y-3 rounded-md border border-dashed p-6 text-center">
+            <p className="text-sm text-muted-foreground">
+              No active or trial students yet. Add a student and you will come straight back
+              to this time.
+            </p>
+            <Button variant="outline" onClick={handleCreateStudent}>
+              <UserPlus className="size-4" /> Create new student
+            </Button>
+          </div>
+        </DialogBody>
       </>
     );
   }
@@ -287,12 +300,13 @@ function CreateClassForm({
         </DialogDescription>
       </DialogHeader>
 
+      <DialogBody>
       <dl className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
         <div className="flex justify-between gap-4">
-          <dt className="text-muted-foreground">
+          <dt className="shrink-0 text-muted-foreground">
             {mode === "weekly" ? "First class" : "When"}
           </dt>
-          <dd className="text-right font-medium tabular-nums">
+          <dd className="min-w-0 text-right font-medium wrap-break-word tabular-nums">
             {slot.dayLabel} · {startTime} – {endLabel}
           </dd>
         </div>
@@ -333,8 +347,8 @@ function CreateClassForm({
         </div>
       </fieldset>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="space-y-2 sm:col-span-2">
+      <div className="grid gap-4 @md:grid-cols-2">
+        <div className="space-y-2 @md:col-span-2">
           <Label htmlFor="create-class-student">Student</Label>
           <Select
             items={students.map((s) => ({ label: s.name, value: s.id }))}
@@ -370,7 +384,7 @@ function CreateClassForm({
           </div>
         </div>
 
-        <div className="space-y-2 sm:col-span-2">
+        <div className="space-y-2 @md:col-span-2">
           <Label htmlFor="create-class-teacher">Teacher</Label>
           <Select
             items={eligibleTeachers.map((t) => ({ label: t.name, value: t.id }))}
@@ -396,7 +410,7 @@ function CreateClassForm({
           )}
         </div>
 
-        <div className="space-y-2 sm:col-span-2">
+        <div className="space-y-2 @md:col-span-2">
           <Label htmlFor="create-class-duration">Duration</Label>
           <Select
             items={DURATION_OPTIONS.map((d) => ({ label: `${d} min`, value: String(d) }))}
@@ -418,7 +432,7 @@ function CreateClassForm({
         </div>
 
         {mode === "weekly" && (
-          <div className="space-y-2 sm:col-span-2">
+          <div className="space-y-2 @md:col-span-2">
             <Label htmlFor="create-class-ends-on">Repeat until</Label>
             <Input
               id="create-class-ends-on"
@@ -449,6 +463,7 @@ function CreateClassForm({
           ? "Times are in the academy timezone. Every week has to be free, or nothing is created."
           : "Times are in the academy timezone. The teacher must be free at that time."}
       </p>
+      </DialogBody>
 
       <DialogFooter className="gap-2">
         <Button variant="outline" onClick={onDone} disabled={isPending}>

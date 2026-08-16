@@ -9,7 +9,6 @@ import {
   SCHEDULING_INTERVAL_MINUTES,
   calendarMode,
   calendarUrl,
-  classifyDestination,
   creationStarts as creationStartsIn,
   formatSlotTime,
   occupiedOnDate,
@@ -19,11 +18,11 @@ import {
   type MinuteRange,
 } from "../scheduling";
 import { updateSessionScheduling } from "../actions";
+import { REQUEST_FAILED_MESSAGE } from "../request-feedback";
 import { SessionDialog } from "./session-dialog";
 import { CreateClassDialog } from "./create-class-dialog";
-import { createSlotDomId } from "./create-positions";
+import { useTriggerFocus } from "./trigger-focus";
 import { MoveBanner } from "./move-banner";
-import { MoveConfirmDialog, type PendingMove } from "./move-confirm-dialog";
 import { WeekGrid } from "./week-grid";
 import { DayAgenda } from "./day-agenda";
 import type { DestinationSlot } from "./move-destinations";
@@ -46,6 +45,11 @@ type Props = {
   weekStart: string;
   /** Today in the academy timezone, so a past position can say that it is one. */
   today: string;
+  /**
+   * Now, in academy wall-clock minutes. Used only to position the phone agenda
+   * when it opens, never rendered, so it cannot cause a hydration mismatch.
+   */
+  nowMinutes: number;
   teacherId?: string;
   movingSession: MovingSession | null;
   /**
@@ -74,10 +78,9 @@ export type InitialCreation = {
 /**
  * The weekly calendar, in the two shapes it takes.
  *
- * Both are the same calendar: one week, the same days, the same move mode and the
- * same confirmation step. All of the state that a move consists of lives here, so
- * switching between a phone and a laptop mid-move changes only how the week is
- * drawn, never what the move means.
+ * Both are the same calendar: one week, the same days and the same move mode. All
+ * of the state a move consists of lives here, so switching between a phone and a
+ * laptop mid-move changes only how the week is drawn, never what the move means.
  */
 export function WeekCalendar({
   days,
@@ -86,6 +89,7 @@ export function WeekCalendar({
   teachers,
   weekStart,
   today,
+  nowMinutes,
   teacherId,
   movingSession,
   movingTeacherBusy,
@@ -95,13 +99,13 @@ export function WeekCalendar({
   const router = useRouter();
   const [selected, setSelected] = useState<CalendarSession | null>(null);
   const [active, setActive] = useState<DestinationSlot | null>(null);
-  const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
+  // The destination currently being written, or null. Doubles as the pending flag.
+  const [savingTo, setSavingTo] = useState<DestinationSlot | null>(null);
   // Opens straight onto the position the round trip started from, so coming back
   // from adding a student lands exactly where creating one was interrupted.
   const [creating, setCreating] = useState<CreationSlot | null>(
     initialCreation?.slot ?? null
   );
-  const [isSaving, setIsSaving] = useState(false);
   // The agenda remembers which day of the week is open, not which date. Paging to
   // another week mid-move then keeps you on the same weekday instead of throwing
   // you back to the start of the week.
@@ -113,6 +117,11 @@ export function WeekCalendar({
   // The reopened dialog is a one-off: once it has been dealt with the position
   // leaves the address bar, so reloading the page does not reopen it.
   const hasClearedUrlContext = useRef(false);
+  // Which button opened each dialog. Recorded rather than rebuilt from an id,
+  // because the agenda and the grid both draw this day and only one is on screen.
+  const creationTrigger = useTriggerFocus();
+  const sessionTrigger = useTriggerFocus();
+  const destinationTrigger = useTriggerFocus();
 
   const isMoving = movingSession !== null;
   // Move mode comes from the URL and owns every position while it is open, so
@@ -165,77 +174,95 @@ export function WeekCalendar({
   }
 
   /**
-   * Closing the creation dialog puts focus back on the position that opened it, so
+   * Closing the creation dialog hands focus back to the position that opened it, so
    * a keyboard user carries on from where they were in the week rather than at the
-   * top of the page. Deferred by a frame so the dialog has finished closing.
+   * top of the page. Base UI does the restoring, from the element recorded when the
+   * position was pressed — looking the position up by id would find the copy in
+   * whichever view is hidden, which cannot take focus.
    */
   function closeCreation() {
-    const position = creating;
     setCreating(null);
 
     if (initialCreation && !hasClearedUrlContext.current) {
       hasClearedUrlContext.current = true;
       router.replace(calendarUrl({ week: weekStart, teacher: teacherId }));
     }
-
-    if (!position) return;
-    requestAnimationFrame(() => {
-      document.getElementById(createSlotDomId(position))?.focus();
-    });
   }
 
   function originalStartOn(date: string): number | null {
     return movingSession && movingSession.date === date ? movingSession.startMinutes : null;
   }
 
+  /**
+   * Leaves move mode, keeping the week and teacher filter that were on screen.
+   *
+   * Replaces rather than pushes: `?moving=` is temporary state, not somewhere the
+   * reader navigated to. Pushing would leave the abandoned move in history, so Back
+   * would silently put them into move mode again for a class they had finished with.
+   */
   function exitMoveMode() {
-    router.push(calendarUrl({ week: weekStart, teacher: teacherId }));
+    router.replace(calendarUrl({ week: weekStart, teacher: teacherId }));
   }
 
-  function handleSelectDestination(slot: DestinationSlot) {
-    if (!movingSession) return;
+  /**
+   * Moves the class as soon as a destination is chosen.
+   *
+   * Entering move mode was the deliberate act; the tap only says where. A second
+   * "are you sure" between the two asked the same question twice and, on a phone,
+   * put a modal over the very grid the choice was made on. Destructive things —
+   * cancelling a class, ending a series — still confirm, because those cannot be
+   * undone by simply moving the class back.
+   *
+   * The class stays drawn where it is until the server answers, so nothing on
+   * screen is ever ahead of what has actually been written.
+   */
+  async function handleSelectDestination(slot: DestinationSlot, trigger: HTMLElement) {
+    // One move at a time: a second tap while the first is in flight is ignored.
+    if (!movingSession || savingTo) return;
 
     const day = days.find((candidate) => candidate.date === slot.date);
     if (!day) return;
 
-    setPendingMove({
-      date: slot.date,
-      dayLabel: `${day.label} ${day.dayNumber}`,
-      startMinutes: slot.startMinutes,
-      conflicts:
-        classifyDestination(
-          { startMinutes: slot.startMinutes, durationMinutes: movingSession.durationMinutes },
-          occupiedOn(slot.date),
-          originalStartOn(slot.date)
-        ) === "conflict",
-    });
-  }
+    destinationTrigger.capture(trigger);
+    setSavingTo(slot);
 
-  async function handleConfirmMove() {
-    if (!movingSession || !pendingMove) return;
+    try {
+      const result = await updateSessionScheduling({
+        id: movingSession.id,
+        teacherId: movingSession.teacherId,
+        date: slot.date,
+        startTime: formatSlotTime(slot.startMinutes),
+        durationMinutes: movingSession.durationMinutes,
+      });
 
-    setIsSaving(true);
-    const result = await updateSessionScheduling({
-      id: movingSession.id,
-      teacherId: movingSession.teacherId,
-      date: pendingMove.date,
-      startTime: formatSlotTime(pendingMove.startMinutes),
-      durationMinutes: movingSession.durationMinutes,
-    });
-    setIsSaving(false);
+      if (!result.success) {
+        // Nothing was written and nothing moved on screen. Move mode stays open,
+        // and focus goes back to the destination that was refused so another can
+        // be chosen straight away.
+        toast.error(result.error);
+        trigger.focus();
+        return;
+      }
 
-    if (!result.success) {
-      // Nothing was written and nothing on screen moved, so the class simply stays
-      // where it is and move mode remains open for another attempt.
-      setPendingMove(null);
-      toast.error(result.error);
-      return;
+      toast.success(
+        `Class moved to ${day.label} ${day.dayNumber} at ${formatSlotTime(slot.startMinutes)}`
+      );
+      // Move mode is left only now that the write has actually happened — a refused
+      // move must never look like a successful one.
+      //
+      // Replaced, not pushed: the move is done, so the URL that was asking for it
+      // must not stay in history. Pushing would let Back re-enter move mode for a
+      // class that has already been moved. This navigation is still what refreshes
+      // the week — the action's `revalidatePath("/calendar")` has invalidated the
+      // route, and `replace` re-fetches it exactly as `push` would, so the card
+      // appears at its new time without a second `router.refresh()`.
+      router.replace(calendarUrl({ week: weekStart, teacher: teacherId }));
+    } catch {
+      toast.error(REQUEST_FAILED_MESSAGE);
+      trigger.focus();
+    } finally {
+      setSavingTo(null);
     }
-
-    setPendingMove(null);
-    toast.success("Class moved");
-    router.push(calendarUrl({ week: weekStart, teacher: teacherId }));
-    router.refresh();
   }
 
   // Falls back to the raw date when the class sits in a week that is not on screen.
@@ -253,10 +280,16 @@ export function WeekCalendar({
     showsCreation,
     occupiedOn,
     originalStartOn,
-    disabled: isSaving,
-    onOpenSession: setSelected,
+    disabled: savingTo !== null,
+    onOpenSession: (session: CalendarSession, trigger: HTMLElement) => {
+      sessionTrigger.capture(trigger);
+      setSelected(session);
+    },
     onSelectDestination: handleSelectDestination,
-    onCreateAt: setCreating,
+    onCreateAt: (slot: CreationSlot, trigger: HTMLElement) => {
+      creationTrigger.capture(trigger);
+      setCreating(slot);
+    },
   };
 
   return (
@@ -266,14 +299,30 @@ export function WeekCalendar({
           session={movingSession}
           originalDayLabel={originalDayLabel}
           onCancel={exitMoveMode}
-          disabled={isSaving}
+          disabled={savingTo !== null}
+          savingLabel={
+            savingTo
+              ? `Moving to ${
+                  days.find((day) => day.date === savingTo.date)?.label ?? savingTo.date
+                } at ${formatSlotTime(savingTo.startMinutes)}…`
+              : null
+          }
         />
       )}
 
-      <div className="lg:hidden">
+      {/*
+        On a phone the agenda is a bounded panel that fills whatever height is left
+        and scrolls inside itself; from `lg` up the week grid takes over and the
+        page scrolls normally again.
+      */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:hidden">
         <DayAgenda
           {...shared}
           selectedDate={selectedDate}
+          weekStart={weekStart}
+          nowMinutes={nowMinutes}
+          startHour={startHour}
+          endHour={endHour}
           onSelectDay={(date) =>
             setSelectedDayIndex(days.findIndex((day) => day.date === date))
           }
@@ -292,7 +341,7 @@ export function WeekCalendar({
       </div>
 
       {isMoving && (
-        <p className="mt-3 text-xs text-muted-foreground">
+        <p className="mt-3 shrink-0 text-xs text-muted-foreground">
           Classes start on the hour or half hour, so destinations are{" "}
           {SCHEDULING_INTERVAL_MINUTES} minutes apart. On a larger screen the arrow keys
           move between them and Escape cancels the move.
@@ -312,6 +361,7 @@ export function WeekCalendar({
         initialStudentId={initialCreation?.studentId ?? preselectedStudentId}
         initialDurationMinutes={initialCreation?.durationMinutes}
         initialEndsOn={initialCreation?.endsOn}
+        finalFocus={creationTrigger.resolve}
         onOpenChange={(open) => !open && closeCreation()}
       />
 
@@ -320,19 +370,9 @@ export function WeekCalendar({
         teachers={teachers}
         weekStart={weekStart}
         teacherFilterId={teacherId}
+        finalFocus={sessionTrigger.resolve}
         onOpenChange={(open) => !open && setSelected(null)}
       />
-
-      {movingSession && (
-        <MoveConfirmDialog
-          session={movingSession}
-          move={pendingMove}
-          originalDayLabel={originalDayLabel}
-          isSaving={isSaving}
-          onCancel={() => setPendingMove(null)}
-          onConfirm={handleConfirmMove}
-        />
-      )}
     </>
   );
 }

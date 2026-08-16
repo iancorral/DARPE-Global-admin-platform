@@ -9,3 +9,15 @@ export const teacherFormSchema = z.object({
 });
 
 export type TeacherFormInput = z.infer<typeof teacherFormSchema>;
+
+/**
+ * An edit carries the active flag as well: deactivating a teacher is an ordinary
+ * edit, not a separate lifecycle action. What it means is decided elsewhere —
+ * eligibility and generation already refuse inactive teachers on the server.
+ */
+export const updateTeacherSchema = teacherFormSchema.extend({
+  id: z.string().min(1),
+  active: z.boolean(),
+});
+
+export type UpdateTeacherInput = z.infer<typeof updateTeacherSchema>;

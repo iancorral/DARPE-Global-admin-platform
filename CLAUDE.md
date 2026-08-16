@@ -350,43 +350,84 @@ Always explain important architectural decisions briefly so the developer can un
 
 ## Current Project State
 
-Last shipped work: `feat: add class completion and attendance recording` (commit `17e75a2`).
+The working tree carries substantial uncommitted work on top of `d0ae3dd`; Ian reviews and
+commits it. Treat the working tree, not HEAD, as the current state.
 
-Scheduling:
-- recurring ScheduleSlots
-- slot validity windows
-- monthly session generation
-- idempotent generation
-- teacher conflict detection
-- rescheduling
-- cancellation
-- restoration with conflict validation
-- interactive weekly calendar
-- teacher filtering
-- timezone-aware session positioning
+Scheduling and calendar:
+- recurring ScheduleSlots with validity windows
+- idempotent monthly generation with teacher-conflict reporting
+- one-off classes and finite weekly series created directly from calendar positions
+- single-session edits, "this and future" series splits, and end-series — history is
+  never rewritten; the old rule is ended and a new one takes over
+- direct move mode held in `?moving=`; cancellation and restoration with conflict checks
+- desktop week grid and bounded mobile day agenda; teacher filter; timezone-aware layout
+- every scheduling decision and its write share one Serializable transaction
+  (`inSchedulingTransaction`), with Prisma `P2034` translated to a retry message
 
 Class lifecycle:
-- class completion
-- per-participant attendance recording (PRESENT / ABSENT / LATE / EXCUSED)
-- status transition validation in `src/features/sessions/lifecycle.ts`
-- scheduling edits locked on completed and cancelled classes
-- completed classes still occupy the teacher's time; cancelled classes do not
+- completion + per-participant attendance (PRESENT / ABSENT / LATE / EXCUSED) in one action
+- transitions validated by `src/features/sessions/lifecycle.ts`; the completion write
+  re-checks the status inside its transaction, so a concurrent cancellation rolls it back
+- scheduling edits locked on completed and cancelled classes; completed classes occupy the
+  teacher's time, cancelled ones do not
+
+Students and teachers:
+- lists with client-side, accent-insensitive search and a status filter; archived students
+  and inactive teachers stay reachable there (default views hide them)
+- create and edit flows for both; editing reuses the creation form, and the student form
+  includes status — pausing, archiving and reactivating are ordinary edits
+- student profile shows the recurring pattern plus concrete classes: bounded upcoming and
+  history lists with attendance, each row linking to its calendar week
+  (`getStudentSessions` in `src/features/students/queries.ts`)
+- teacher profile at `/teachers/[id]`: active state, languages, contact, assigned
+  students, upcoming classes, and this-week counts (Monday–Sunday, academy time) —
+  no hours, rates or earnings until financial records exist
+- teacher active flag is edited on the teacher form; eligibility and generation refuse
+  inactive teachers on the server, so deactivation needs no cascade
+- `Teacher.hourlyRateCents` and `Teacher.notes` exist in the schema but have no UI —
+  rate is a finance-phase concern
+
+Dashboard (`/dashboard`):
+- greets the signed-in staff member by the first word of their `Profile.name`
+  (server-rendered, academy wall-clock hour; blank name degrades to the plain greeting)
+- operational only, timezone-correct via `src/features/dashboard/windows.ts`: today's
+  classes, "needs attention" (past classes still scheduled), next upcoming, this-week
+  status counts, active/trial student and active teacher counts — actionable sections
+  render above summary counts
+- all dashboard strings live in `src/features/dashboard/copy.ts` for a later translation
+  pass
+- no revenue or financial metrics: the schema has no financial models yet
+
+Visual foundation:
+- brand tokens from the DARPE presentation live in `src/app/globals.css` (deep violet
+  `#482D79` primary, warm `#FAF7FC` background, pale-lavender tints); contrast rationale
+  is documented in DESIGN.md §3 — mauve and lavender gray never carry text
+- `font-serif` (system editorial stack) is for page titles, the wordmark and the
+  greeting only; body/UI is Geist registered as `--font-sans`
+
+Navigation: grouped sidebar — Overview (Dashboard), Operations (Calendar, Students,
+Teachers). Money (Finance, Teacher payouts) and Settings groups are added only when a
+real route exists; navigation never links to a missing page. Mobile: Home, Calendar,
+Students, Teachers.
 
 Testing:
-- Vitest is installed and configured (`vitest.config.mts`), run with `pnpm test`
-- current suites cover pure domain logic without database access:
-  `src/features/sessions/conflicts.test.ts` and `src/features/sessions/lifecycle.test.ts`
+- Vitest (`vitest.config.mts`), run with `pnpm test`
+- suites cover pure domain logic without database access: conflicts, lifecycle,
+  eligibility, schemas, series and series editing, scheduling, calendar return,
+  element ids, trigger focus, dev origins, list search (`src/lib/search.test.ts`),
+  dashboard windows (`src/features/dashboard/windows.test.ts`) and dashboard copy
+  (`src/features/dashboard/copy.test.ts`)
 
 ### Latest verification
 
-All four checks were run on 2026-08-13 against this state and passed:
+All four checks were run on 2026-08-15 against this state and passed:
 
 | Command | Result |
 | --- | --- |
 | `pnpm lint` | clean, no errors or warnings |
 | `pnpm typecheck` | clean, no type errors |
-| `pnpm test` | 2 test files, 14 tests passed |
-| `pnpm build` | succeeded — Next.js 16.2.10, 11 routes generated |
+| `pnpm test` | 15 test files, 339 tests passed |
+| `pnpm build` | succeeded from a clean `.next` — Next.js 16.2.10, 13 routes |
 
 Re-run these rather than trusting this table after any code change; it is a snapshot, not a
 standing guarantee.

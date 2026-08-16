@@ -8,9 +8,11 @@ import { Button } from "@/components/ui/button";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { generateMonthlySessions, type GenerationConflict } from "@/features/schedules/actions";
+import { generateMonthlySessions } from "@/features/schedules/actions";
+import type { GenerationConflict } from "@/features/schedules/action-results";
 import { addDaysToDate } from "@/lib/datetime";
 import { calendarUrl } from "../scheduling";
+import { REQUEST_FAILED_MESSAGE } from "../request-feedback";
 
 const ALL_TEACHERS = "all";
 const MAX_LISTED_CONFLICTS = 4;
@@ -58,11 +60,20 @@ export function CalendarToolbar({
 
   async function handleGenerate() {
     setIsGenerating(true);
+    try {
+      await runGeneration();
+    } catch {
+      toast.error(REQUEST_FAILED_MESSAGE);
+    } finally {
+      setIsGenerating(false);
+    }
+  }
+
+  async function runGeneration() {
     const result = await generateMonthlySessions({
       year: generationMonth.year,
       month: generationMonth.month,
     });
-    setIsGenerating(false);
 
     if (!result.success) {
       toast.error(result.error);

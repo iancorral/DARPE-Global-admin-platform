@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, CalendarPlus } from "lucide-react";
-import { getStudentById } from "@/features/students/queries";
+import { ArrowLeft, CalendarPlus, Pencil } from "lucide-react";
+import { getStudentById, getStudentSessions } from "@/features/students/queries";
+import { StudentClasses } from "@/features/students/components/student-classes";
+import { STUDENT_STATUS_LABELS } from "@/features/students/schemas";
 import { getScheduleFormOptions } from "@/features/schedules/queries";
 import { isEligibleStudent } from "@/features/sessions/eligibility";
 import { scheduleForStudentUrl } from "@/features/sessions/calendar-return";
@@ -21,7 +23,10 @@ export default async function StudentProfilePage({
 
   if (!student) notFound();
 
-  const { teachers } = await getScheduleFormOptions();
+  const [{ teachers }, sessions] = await Promise.all([
+    getScheduleFormOptions(),
+    getStudentSessions(student.id),
+  ]);
   const currentWeekStart = startOfWeekDate(todayInZone(DEFAULT_TIMEZONE));
 
   return (
@@ -35,7 +40,7 @@ export default async function StudentProfilePage({
 
       <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
+          <h1 className="font-serif text-2xl font-semibold tracking-tight">
             {student.firstName} {student.lastName}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -52,16 +57,29 @@ export default async function StudentProfilePage({
           there on purpose: a class needs a time, and the calendar is where a time
           is chosen with the week in view.
         */}
-        {isEligibleStudent(student.status) && (
+        {/*
+          `nativeButton={false}` because this navigates: it renders an anchor, and
+          Base UI must not treat it as a native <button>. The same pattern as the
+          "New student" and "New teacher" links.
+        */}
+        <div className="flex flex-wrap gap-3">
           <Button
             variant="outline"
-            render={
-              <Link href={scheduleForStudentUrl(currentWeekStart, student.id)}>
-                <CalendarPlus className="size-4" /> Schedule class
-              </Link>
-            }
-          />
-        )}
+            nativeButton={false}
+            render={<Link href={`/students/${student.id}/edit`} />}
+          >
+            <Pencil className="size-4" /> Edit
+          </Button>
+          {isEligibleStudent(student.status) && (
+            <Button
+              variant="outline"
+              nativeButton={false}
+              render={<Link href={scheduleForStudentUrl(currentWeekStart, student.id)} />}
+            >
+              <CalendarPlus className="size-4" /> Schedule class
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -70,7 +88,7 @@ export default async function StudentProfilePage({
             <CardTitle className="text-sm">Details</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
-            <Row label="Status" value={<Badge>{student.status}</Badge>} />
+            <Row label="Status" value={<Badge>{STUDENT_STATUS_LABELS[student.status]}</Badge>} />
             <Row label="Modality" value={student.modality.replaceAll("_", " ").toLowerCase()} />
             <Row label="Email" value={student.email ?? "—"} />
             <Row label="Phone" value={student.phone ?? "—"} />
@@ -90,6 +108,10 @@ export default async function StudentProfilePage({
             teachers={teachers}
           />
         </div>
+      </div>
+
+      <div className="mt-6">
+        <StudentClasses sessions={sessions} />
       </div>
     </div>
   );

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ALIGNED_START_MESSAGE, firstValidationMessage } from "@/features/sessions/schemas";
 import { MAX_SERIES_WEEKS } from "./series";
-import { weeklySeriesSchema } from "./schemas";
+import { endSeriesSchema, updateSeriesSchema, weeklySeriesSchema } from "./schemas";
 
 /**
  * What the server will accept as a weekly series. The dialog only offers valid
@@ -125,5 +125,88 @@ describe("weeklySeriesSchema", () => {
         /prisma|sql|column|table|undefined|expected|received|invalid input/i
       );
     }
+  });
+});
+
+/**
+ * Replacing a series from one class onward. The cutoff is deliberately absent:
+ * the server reads it from the selected class, so a client cannot choose which
+ * week of history a change starts from.
+ */
+const validUpdate = {
+  id: "session-1",
+  teacherId: "teacher-1",
+  startsOn: "2026-08-17",
+  endsOn: "2026-09-13",
+  startTime: "09:00",
+  durationMinutes: 60,
+};
+
+const update = (overrides?: Partial<typeof validUpdate> & Record<string, unknown>) => ({
+  ...validUpdate,
+  ...overrides,
+});
+
+describe("updateSeriesSchema", () => {
+  it("accepts a finite replacement series", () => {
+    expect(updateSeriesSchema.safeParse(update()).success).toBe(true);
+  });
+
+  it("requires an end date, so an open-ended pattern cannot stay open-ended", () => {
+    expect(updateSeriesSchema.safeParse({ ...validUpdate, endsOn: undefined }).success).toBe(
+      false
+    );
+    expect(updateSeriesSchema.safeParse(update({ endsOn: "" })).success).toBe(false);
+  });
+
+  it("bounds the replacement by the same maximum span as a new series", () => {
+    const result = updateSeriesSchema.safeParse(update({ endsOn: "2030-01-01" }));
+
+    expect(result.success).toBe(false);
+    expect(result.success === false && firstValidationMessage(result.error, "fallback")).toContain(
+      `${MAX_SERIES_WEEKS} weeks`
+    );
+  });
+
+  it("rejects an end date before the new first class", () => {
+    expect(updateSeriesSchema.safeParse(update({ endsOn: "2026-08-16" })).success).toBe(false);
+  });
+
+  it("holds new times to the shared scheduling interval", () => {
+    const result = updateSeriesSchema.safeParse(update({ startTime: "09:15" }));
+
+    expect(result.success).toBe(false);
+    expect(result.success === false && result.error.issues[0]?.message).toBe(
+      ALIGNED_START_MESSAGE
+    );
+  });
+
+  it("takes only the fields the server acts on, ignoring a client-sent cutoff", () => {
+    const result = updateSeriesSchema.safeParse(
+      update({ cutoffOn: "2020-01-01", scheduleSlotId: "slot-9", weekday: 3, studentId: "x" })
+    );
+
+    expect(result.success).toBe(true);
+    expect(Object.keys(result.success ? result.data : {}).sort()).toEqual([
+      "durationMinutes",
+      "endsOn",
+      "id",
+      "startTime",
+      "startsOn",
+      "teacherId",
+    ]);
+  });
+});
+
+describe("endSeriesSchema", () => {
+  it("needs only the class to end from", () => {
+    expect(endSeriesSchema.safeParse({ id: "session-1" }).success).toBe(true);
+    expect(endSeriesSchema.safeParse({ id: "" }).success).toBe(false);
+  });
+
+  it("ignores anything else a client sends", () => {
+    const result = endSeriesSchema.safeParse({ id: "session-1", cutoffOn: "2020-01-01" });
+
+    expect(result.success && Object.keys(result.data)).toEqual(["id"]);
   });
 });

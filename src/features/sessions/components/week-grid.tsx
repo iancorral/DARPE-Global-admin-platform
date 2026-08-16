@@ -13,6 +13,7 @@ import {
 } from "../scheduling";
 import { MoveDestinations, slotDomId, type DestinationSlot } from "./move-destinations";
 import { CreatePositions, createSlotDomId, type CreatePosition } from "./create-positions";
+import { sessionCardId } from "../element-ids";
 import type { CalendarSession, MovingSession } from "../queries";
 import type { CalendarDay } from "./calendar-day";
 
@@ -41,10 +42,11 @@ type Props = {
   originalStartOn: (date: string) => number | null;
   active: DestinationSlot | null;
   disabled: boolean;
-  onOpenSession: (session: CalendarSession) => void;
+  /** Each handler is handed the button pressed, so focus can return to it. */
+  onOpenSession: (session: CalendarSession, trigger: HTMLElement) => void;
   onActivate: (slot: DestinationSlot) => void;
-  onSelectDestination: (slot: DestinationSlot) => void;
-  onCreateAt: (slot: CreationSlot) => void;
+  onSelectDestination: (slot: DestinationSlot, trigger: HTMLElement) => void;
+  onCreateAt: (slot: CreationSlot, trigger: HTMLElement) => void;
   onExitMoveMode: () => void;
 };
 
@@ -247,12 +249,13 @@ export function WeekGrid({
                   return (
                     <button
                       key={session.id}
+                      id={sessionCardId("grid", session.id)}
                       type="button"
                       // During move mode the cards step aside so every destination
                       // underneath stays reachable by pointer and touch.
                       disabled={isMoving}
                       aria-hidden={isMoving ? true : undefined}
-                      onClick={() => onOpenSession(session)}
+                      onClick={(event) => onOpenSession(session, event.currentTarget)}
                       className={cn(
                         "pointer-events-auto absolute overflow-hidden rounded-md border border-l-2 px-2 py-1 text-left transition-colors",
                         isMoving && "pointer-events-none",

@@ -6,6 +6,7 @@ import { requireUser } from "@/lib/auth";
 import { DEFAULT_TIMEZONE, formatInZone, zonedToUtc } from "@/lib/datetime";
 import { CONFLICT_LOOKBACK_MINUTES, endOf, findOverlap, type TimeRange } from "./conflicts";
 import {
+  ATTENDANCE_RECORDABLE_STATUSES,
   TEACHER_OCCUPYING_STATUSES,
   canEditScheduling,
   canRecordAttendance,
@@ -31,8 +32,6 @@ import {
   type UpdateSessionSchedulingInput,
 } from "./schemas";
 import { Prisma } from "@/generated/prisma/client";
-
-export type { ActionResult };
 
 /**
  * The first active session that would double-book this teacher. Cancelled classes
@@ -102,7 +101,7 @@ export async function createSession(input: CreateSessionInput): Promise<ActionRe
 
   // Everything from here on runs in one serializable transaction: the eligibility
   // the decision rests on, the conflict check, and the write it authorises.
-  const result = await inSchedulingTransaction(async (tx) => {
+  const result = await inSchedulingTransaction<ActionResult>(async (tx) => {
     const [student, teacher] = await Promise.all([
       tx.student.findUnique({
         where: { id: studentId },
@@ -217,7 +216,7 @@ export async function updateSessionScheduling(
 
   const { id, teacherId, date, startTime, durationMinutes } = parsed.data;
 
-  const result = await inSchedulingTransaction(async (tx) => {
+  const result = await inSchedulingTransaction<ActionResult>(async (tx) => {
     const session = await tx.classSession.findUnique({
       where: { id },
       select: {
@@ -320,7 +319,7 @@ export async function setSessionStatus(input: SessionStatusInput): Promise<Actio
 
   const { id, status } = parsed.data;
 
-  const result = await inSchedulingTransaction(async (tx) => {
+  const result = await inSchedulingTransaction<ActionResult>(async (tx) => {
     const session = await tx.classSession.findUnique({
       where: { id },
       select: {
@@ -414,20 +413,44 @@ export async function completeSession(input: CompleteSessionInput): Promise<Acti
     return { success: false, error: "That attendance entry does not belong to this class." };
   }
 
-  await db.$transaction(async (tx) => {
-    for (const entry of attendance) {
-      await tx.classParticipant.update({
-        where: { id: entry.participantId },
-        data: { attendance: entry.value },
-      });
-    }
+  try {
+    await db.$transaction(async (tx) => {
+      for (const entry of attendance) {
+        await tx.classParticipant.update({
+          where: { id: entry.participantId },
+          data: { attendance: entry.value },
+        });
+      }
 
-    await tx.classSession.update({
-      where: { id },
-      data: { status: "COMPLETED" },
+      // The status filter re-states the rule checked above inside the write
+      // itself, so a cancellation that lands between the check and this statement
+      // rolls the whole completion back instead of being silently overwritten.
+      const updated = await tx.classSession.updateMany({
+        where: { id, status: { in: ATTENDANCE_RECORDABLE_STATUSES } },
+        data: { status: "COMPLETED" },
+      });
+
+      if (updated.count === 0) {
+        throw new CompletionBlockedError();
+      }
     });
-  });
+  } catch (error) {
+    if (error instanceof CompletionBlockedError) {
+      return {
+        success: false,
+        error: "This class was just cancelled by someone else. Restore it first.",
+      };
+    }
+    throw error;
+  }
 
   revalidatePath("/calendar");
   return { success: true };
+}
+
+/** Thrown inside the completion transaction to roll back the attendance writes. */
+class CompletionBlockedError extends Error {
+  constructor() {
+    super("Class status changed while completing it.");
+  }
 }

@@ -15,6 +15,7 @@ import {
   type CalendarDay,
   type InitialCreation,
 } from "@/features/sessions/components/week-calendar";
+import { parseWallClockMinutes } from "@/features/sessions/scheduling";
 import { getScheduleFormOptions } from "@/features/schedules/queries";
 import { MONTHS } from "@/features/schedules/schemas";
 import {
@@ -36,6 +37,9 @@ export default async function CalendarPage({
   const params = calendarParamsSchema.safeParse(await searchParams);
   const today = todayInZone(DEFAULT_TIMEZONE);
   const todayWeekStart = startOfWeekDate(today);
+  // Academy wall-clock time now, only so the phone agenda opens near the current
+  // half hour. Never rendered, so it cannot mismatch between server and client.
+  const nowMinutes = parseWallClockMinutes(formatInZone(new Date(), DEFAULT_TIMEZONE)) ?? 0;
 
   const weekStart = params.success && params.data.week
     ? startOfWeekDate(params.data.week)
@@ -113,10 +117,13 @@ export default async function CalendarPage({
   const generationMonth = Number(weekStart.slice(5, 7));
 
   return (
-    <div className="p-4 lg:p-8">
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+    // Fills the shell rather than measuring the viewport: the layout already bounds
+    // the space, so this only has to claim it and let the agenda inside scroll.
+    // From `lg` up it goes back to an ordinary block that grows with the week grid.
+    <div className="flex min-h-0 flex-1 flex-col p-4 lg:block lg:p-8">
+      <div className="mb-4 flex shrink-0 flex-wrap items-start justify-between gap-4 lg:mb-6">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Calendar</h1>
+          <h1 className="font-serif text-2xl font-semibold tracking-tight">Calendar</h1>
           <p className="text-sm text-muted-foreground">
             Week of {rangeLabel} · {sessions.length} sessions
           </p>
@@ -142,6 +149,7 @@ export default async function CalendarPage({
         teachers={createClassOptions.teachers}
         weekStart={weekStart}
         today={today}
+        nowMinutes={nowMinutes}
         teacherId={teacherId}
         movingSession={movingSession}
         movingTeacherBusy={movingTeacherBusy}
@@ -150,14 +158,14 @@ export default async function CalendarPage({
       />
 
       {hiddenCount > 0 && (
-        <p className="mt-3 text-xs text-muted-foreground">
+        <p className="mt-3 shrink-0 text-xs text-muted-foreground">
           {hiddenCount} session{hiddenCount === 1 ? "" : "s"} fall on Sunday and are not shown in
           this Monday–Saturday view.
         </p>
       )}
 
       {sessions.length === 0 && (
-        <p className="mt-3 text-xs text-muted-foreground">
+        <p className="mt-3 shrink-0 text-xs text-muted-foreground">
           No sessions this week. Recurring schedules become sessions once the month is generated.
         </p>
       )}

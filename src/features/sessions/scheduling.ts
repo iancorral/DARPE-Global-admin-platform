@@ -360,6 +360,42 @@ export function buildAgendaRows<T extends { startMinutes: number }>(
     }));
 }
 
+/**
+ * Where the phone agenda should be scrolled to when a day first opens.
+ *
+ * The agenda scrolls inside its own panel, so it opens somewhere useful rather
+ * than at the top of a twelve-hour list:
+ *
+ * - Today opens at the half hour happening now, when that is on screen at all.
+ * - Another day with classes opens at its first class.
+ * - Anything else opens at the start of the day, which is what `null` means.
+ *
+ * Only ever consulted when the day or week actually changes, so it positions the
+ * agenda once and never drags the reader back to it afterwards.
+ */
+export function initialAgendaScrollMinutes(params: {
+  isToday: boolean;
+  /** Now, in academy wall-clock minutes, or null when it is not known. */
+  nowMinutes: number | null;
+  /** The first class of the day, or null when there are none. */
+  firstSessionMinutes: number | null;
+  startHour: number;
+  endHour: number;
+}): number | null {
+  const { isToday, nowMinutes, firstSessionMinutes, startHour, endHour } = params;
+
+  if (
+    isToday &&
+    nowMinutes !== null &&
+    nowMinutes >= startHour * 60 &&
+    nowMinutes < endHour * 60
+  ) {
+    return intervalStart(nowMinutes);
+  }
+
+  return firstSessionMinutes;
+}
+
 /** Minutes since midnight as the "HH:MM" wall-clock time the server expects. */
 export function formatSlotTime(minutes: number): string {
   const hours = Math.floor(minutes / 60);

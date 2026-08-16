@@ -41,7 +41,13 @@ export function canEditScheduling(status: ClassStatus): boolean {
  * Attendance belongs to a class that took place, so it can be recorded while
  * completing a scheduled class and corrected afterwards, but never on a
  * cancelled one.
+ *
+ * The list form exists so a guarded write can re-state the rule inside its own
+ * WHERE clause — the check and the update become one atomic statement instead of
+ * a read followed by a write a concurrent cancellation could slip between.
  */
+export const ATTENDANCE_RECORDABLE_STATUSES: ClassStatus[] = ["SCHEDULED", "COMPLETED"];
+
 export function canRecordAttendance(status: ClassStatus): boolean {
-  return status === "SCHEDULED" || status === "COMPLETED";
+  return ATTENDANCE_RECORDABLE_STATUSES.includes(status);
 }

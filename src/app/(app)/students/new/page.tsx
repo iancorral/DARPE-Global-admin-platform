@@ -14,7 +14,7 @@ export default async function NewStudentPage({
 
   return (
     <div className="p-4 lg:p-8">
-      <h1 className="mb-6 text-2xl font-semibold tracking-tight">New student</h1>
+      <h1 className="mb-6 font-serif text-2xl font-semibold tracking-tight">New student</h1>
       <StudentForm
         languages={languages}
         teachers={teachers}

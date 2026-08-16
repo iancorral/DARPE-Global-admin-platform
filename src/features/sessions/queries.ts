@@ -25,6 +25,12 @@ export type CalendarSession = {
   teacherName: string;
   participants: SessionParticipant[];
   isGenerated: boolean;
+  /**
+   * Whether this class is one occurrence of a recurring rule, and so can be edited
+   * or ended for the whole series from here. Only a boolean: which rule it is, and
+   * which week it stands for, are read back on the server when an edit arrives.
+   */
+  belongsToSeries: boolean;
 };
 
 type SessionRecord = Awaited<ReturnType<typeof findWeekSessions>>[number];
@@ -69,6 +75,7 @@ function toCalendarSession(session: SessionRecord): CalendarSession {
       attendance: participant.attendance,
     })),
     isGenerated: session.scheduleSlotId !== null,
+    belongsToSeries: session.scheduleSlotId !== null && session.slotOccurrenceOn !== null,
   };
 }
 

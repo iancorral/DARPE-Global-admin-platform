@@ -54,38 +54,51 @@ export function ScheduleManager({ studentId, slots, teachers }: Props) {
   const [startsOn, setStartsOn] = useState(today);
   const [endsOn, setEndsOn] = useState("");
   const [isPending, setIsPending] = useState(false);
+  // Removal asks for a second click on the same row before anything is sent,
+  // the same inline confirmation the session dialog uses for ending a series.
+  const [confirmingRemoveId, setConfirmingRemoveId] = useState<string | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
 
   async function handleAdd() {
     setIsPending(true);
-    const result = await createScheduleSlot({
-      studentId,
-      teacherId,
-      weekday: Number(weekday),
-      startTime,
-      durationMinutes: Number(durationMinutes),
-      startsOn,
-      endsOn,
-    });
-    setIsPending(false);
+    try {
+      const result = await createScheduleSlot({
+        studentId,
+        teacherId,
+        weekday: Number(weekday),
+        startTime,
+        durationMinutes: Number(durationMinutes),
+        startsOn,
+        endsOn,
+      });
 
-    if (!result.success) {
-      toast.error(result.error);
-      return;
+      if (!result.success) {
+        toast.error(result.error);
+        return;
+      }
+
+      toast.success("Schedule slot added");
+      setIsAdding(false);
+      router.refresh();
+    } finally {
+      setIsPending(false);
     }
-
-    toast.success("Schedule slot added");
-    setIsAdding(false);
-    router.refresh();
   }
 
   async function handleRemove(id: string) {
-    const result = await deactivateScheduleSlot(id);
-    if (!result.success) {
-      toast.error(result.error);
-      return;
+    setRemovingId(id);
+    try {
+      const result = await deactivateScheduleSlot(id);
+      if (!result.success) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success("Schedule slot removed");
+      router.refresh();
+    } finally {
+      setRemovingId(null);
+      setConfirmingRemoveId(null);
     }
-    toast.success("Schedule slot removed");
-    router.refresh();
   }
 
   const weeklyMinutes = slots.reduce((total, slot) => total + slot.durationMinutes, 0);
@@ -130,9 +143,35 @@ export function ScheduleManager({ studentId, slots, teachers }: Props) {
                 {slot.endsOn ? ` to ${toInputDate(slot.endsOn)}` : " · no end date"}
               </p>
             </div>
-            <Button size="sm" variant="ghost" onClick={() => handleRemove(slot.id)}>
-              <Trash2 className="size-4" />
-            </Button>
+            {confirmingRemoveId === slot.id ? (
+              <div className="flex shrink-0 items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={removingId === slot.id}
+                  onClick={() => handleRemove(slot.id)}
+                >
+                  {removingId === slot.id ? "Removing..." : "Remove"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={removingId === slot.id}
+                  onClick={() => setConfirmingRemoveId(null)}
+                >
+                  Keep
+                </Button>
+              </div>
+            ) : (
+              <Button
+                size="sm"
+                variant="ghost"
+                aria-label="Remove schedule slot"
+                onClick={() => setConfirmingRemoveId(slot.id)}
+              >
+                <Trash2 className="size-4" />
+              </Button>
+            )}
           </div>
         ))}
 
