@@ -2,15 +2,17 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { GraduationCap, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
+import { EmptyState } from "@/components/shared/empty-state";
+import { InitialsAvatar, LanguageChip } from "@/components/shared/identity";
+import { INTERACTIVE_CARD } from "@/lib/interaction";
+import { cn } from "@/lib/utils";
 import { matchesSearch } from "@/lib/search";
 import { STUDENT_STATUSES, STUDENT_STATUS_LABELS } from "../schemas";
 import type { StudentListRow } from "../queries";
@@ -39,6 +41,14 @@ const FILTER_OPTIONS: { value: StatusFilter; label: string }[] = [
   })),
 ];
 
+/**
+ * Students as cards, matching the teachers list.
+ *
+ * A table put a person's name, language, level, teacher and status into five
+ * columns that had to be read across; a card groups them around the person,
+ * and the same card works from a phone to an ultrawide monitor without hiding
+ * columns at breakpoints.
+ */
 export function StudentsTable({ students }: { students: StudentListRow[] }) {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("CURRENT");
@@ -61,19 +71,26 @@ export function StudentsTable({ students }: { students: StudentListRow[] }) {
   });
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-        <div className="flex-1 space-y-2">
+        <div className="flex-1 space-y-2 sm:max-w-md">
           <Label htmlFor="student-search">Search</Label>
-          <Input
-            id="student-search"
-            type="search"
-            placeholder="Name, language, teacher..."
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-          />
+          <div className="relative">
+            <Search
+              aria-hidden="true"
+              className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+            />
+            <Input
+              id="student-search"
+              type="search"
+              placeholder="Name, language, teacher..."
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              className="bg-card pl-9 shadow-xs"
+            />
+          </div>
         </div>
-        <div className="space-y-2 sm:w-48">
+        <div className="space-y-2 sm:w-52">
           <Label htmlFor="student-status-filter">Status</Label>
           <Select
             items={FILTER_OPTIONS.map((option) => ({
@@ -83,7 +100,7 @@ export function StudentsTable({ students }: { students: StudentListRow[] }) {
             value={statusFilter}
             onValueChange={(value) => value !== null && setStatusFilter(value as StatusFilter)}
           >
-            <SelectTrigger id="student-status-filter" className="w-full">
+            <SelectTrigger id="student-status-filter" className="w-full bg-card shadow-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -98,46 +115,48 @@ export function StudentsTable({ students }: { students: StudentListRow[] }) {
       </div>
 
       {visible.length === 0 ? (
-        <p className="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">
+        <EmptyState>
           {students.length === 0
             ? "No students yet. Create the first one to get started."
-            : "No students match this search."}
-        </p>
+            : "No students match this search. Try a different name, or widen the status filter."}
+        </EmptyState>
       ) : (
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead className="hidden sm:table-cell">Language</TableHead>
-                <TableHead className="hidden md:table-cell">Teacher</TableHead>
-                <TableHead className="hidden lg:table-cell">Level</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {visible.map((student) => (
-                <TableRow key={student.id}>
-                  <TableCell className="font-medium">
-                    <Link href={`/students/${student.id}`} className="hover:underline">
+        <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {visible.map((student) => (
+            <li key={student.id}>
+              <Link
+                href={`/students/${student.id}`}
+                className={cn(
+                  "flex h-full flex-col gap-4 rounded-xl border bg-card p-5 shadow-xs",
+                  INTERACTIVE_CARD,
+                  student.status === "ARCHIVED" && "opacity-75"
+                )}
+              >
+                <div className="flex items-start gap-3">
+                  <InitialsAvatar name={student.name} className="size-11 text-sm" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-serif text-base font-semibold">
                       {student.name}
-                    </Link>
-                  </TableCell>
-                  <TableCell className="hidden sm:table-cell">{student.languageName}</TableCell>
-                  <TableCell className="hidden md:table-cell text-muted-foreground">
-                    {student.teacherName ?? "Unassigned"}
-                  </TableCell>
-                  <TableCell className="hidden lg:table-cell">{student.level ?? "—"}</TableCell>
-                  <TableCell>
-                    <Badge variant={STATUS_VARIANT[student.status]}>
-                      {STUDENT_STATUS_LABELS[student.status]}
-                    </Badge>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {student.level ? `Level ${student.level}` : "No level recorded"}
+                    </p>
+                  </div>
+                  <Badge variant={STATUS_VARIANT[student.status]}>
+                    {STUDENT_STATUS_LABELS[student.status]}
+                  </Badge>
+                </div>
+
+                <LanguageChip name={student.languageName} className="self-start" />
+
+                <p className="mt-auto flex items-center gap-1.5 border-t pt-3 text-xs text-muted-foreground">
+                  <GraduationCap aria-hidden="true" className="size-3.5 shrink-0" />
+                  <span className="truncate">{student.teacherName ?? "No primary teacher"}</span>
+                </p>
+              </Link>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

@@ -2,23 +2,25 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { Search, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
+import { EmptyState } from "@/components/shared/empty-state";
+import { InitialsAvatar, LanguageChip } from "@/components/shared/identity";
+import { INTERACTIVE_CARD } from "@/lib/interaction";
+import { cn } from "@/lib/utils";
 import { matchesSearch } from "@/lib/search";
 import type { TeacherListRow } from "../queries";
 
 /**
  * Active teachers are the working set, so they are the default view; inactive
  * ones remain reachable here because this list is the only place a teacher can
- * be found again and reactivated. Same client-side filtering as the students
- * list: the rows are already here, and names stay out of the URL.
+ * be found again and reactivated. Filtering happens on the client: the rows
+ * are already loaded, and names stay out of the URL.
  */
 type ActiveFilter = "ACTIVE" | "INACTIVE" | "ALL";
 
@@ -28,6 +30,14 @@ const FILTER_OPTIONS: { value: ActiveFilter; label: string }[] = [
   { value: "ALL", label: "All" },
 ];
 
+/**
+ * Teachers as cards rather than table rows.
+ *
+ * There are few of them and each carries a small set of unlike facts — a name,
+ * the languages they teach, how many students they hold — which a table forces
+ * into columns that are mostly empty. A card puts them together, and the whole
+ * card is one target.
+ */
 export function TeachersTable({ teachers }: { teachers: TeacherListRow[] }) {
   const [query, setQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<ActiveFilter>("ACTIVE");
@@ -36,23 +46,28 @@ export function TeachersTable({ teachers }: { teachers: TeacherListRow[] }) {
     const activeOk =
       activeFilter === "ALL" || (activeFilter === "ACTIVE") === teacher.active;
 
-    return (
-      activeOk && matchesSearch(query, [teacher.name, ...teacher.languageNames])
-    );
+    return activeOk && matchesSearch(query, [teacher.name, ...teacher.languageNames]);
   });
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-        <div className="flex-1 space-y-2">
+        <div className="flex-1 space-y-2 sm:max-w-md">
           <Label htmlFor="teacher-search">Search</Label>
-          <Input
-            id="teacher-search"
-            type="search"
-            placeholder="Name or language..."
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-          />
+          <div className="relative">
+            <Search
+              aria-hidden="true"
+              className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+            />
+            <Input
+              id="teacher-search"
+              type="search"
+              placeholder="Name or language..."
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              className="bg-card pl-9 shadow-xs"
+            />
+          </div>
         </div>
         <div className="space-y-2 sm:w-40">
           <Label htmlFor="teacher-active-filter">Status</Label>
@@ -64,7 +79,7 @@ export function TeachersTable({ teachers }: { teachers: TeacherListRow[] }) {
             value={activeFilter}
             onValueChange={(value) => value !== null && setActiveFilter(value as ActiveFilter)}
           >
-            <SelectTrigger id="teacher-active-filter" className="w-full">
+            <SelectTrigger id="teacher-active-filter" className="w-full bg-card shadow-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -79,54 +94,59 @@ export function TeachersTable({ teachers }: { teachers: TeacherListRow[] }) {
       </div>
 
       {visible.length === 0 ? (
-        <p className="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">
+        <EmptyState>
           {teachers.length === 0
             ? "No teachers yet. Create the first one to get started."
-            : "No teachers match this search."}
-        </p>
+            : "No teachers match this search. Try a different name or language, or switch the status filter."}
+        </EmptyState>
       ) : (
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead className="hidden md:table-cell">Languages</TableHead>
-                <TableHead className="hidden md:table-cell">Students</TableHead>
-                <TableHead className="hidden lg:table-cell">Contact</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {visible.map((teacher) => (
-                <TableRow key={teacher.id}>
-                  <TableCell className="font-medium">
-                    <Link href={`/teachers/${teacher.id}`} className="hover:underline">
+        <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {visible.map((teacher) => (
+            <li key={teacher.id}>
+              <Link
+                href={`/teachers/${teacher.id}`}
+                className={cn(
+                  "flex h-full flex-col gap-4 rounded-xl border bg-card p-5 shadow-xs",
+                  INTERACTIVE_CARD,
+                  !teacher.active && "opacity-75"
+                )}
+              >
+                <div className="flex items-start gap-3">
+                  <InitialsAvatar name={teacher.name} className="size-11 text-sm" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-serif text-base font-semibold">
                       {teacher.name}
-                    </Link>
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell">
-                    <div className="flex flex-wrap gap-1">
-                      {teacher.languageNames.map((name) => (
-                        <Badge key={name} variant="secondary">
-                          {name}
-                        </Badge>
-                      ))}
-                    </div>
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell">{teacher.studentCount}</TableCell>
-                  <TableCell className="hidden text-muted-foreground lg:table-cell">
-                    {teacher.email ?? "—"}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={teacher.active ? "default" : "outline"}>
-                      {teacher.active ? "Active" : "Inactive"}
-                    </Badge>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {teacher.email ?? "No email on file"}
+                    </p>
+                  </div>
+                  <Badge variant={teacher.active ? "default" : "outline"}>
+                    {teacher.active ? "Active" : "Inactive"}
+                  </Badge>
+                </div>
+
+                <div className="flex flex-wrap gap-1.5">
+                  {teacher.languageNames.length > 0 ? (
+                    teacher.languageNames.map((name) => (
+                      <LanguageChip key={name} name={name} />
+                    ))
+                  ) : (
+                    <span className="text-xs text-muted-foreground">
+                      No languages assigned
+                    </span>
+                  )}
+                </div>
+
+                <p className="mt-auto flex items-center gap-1.5 border-t pt-3 text-xs text-muted-foreground">
+                  <Users aria-hidden="true" className="size-3.5" />
+                  {teacher.studentCount}{" "}
+                  {teacher.studentCount === 1 ? "student" : "students"}
+                </p>
+              </Link>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

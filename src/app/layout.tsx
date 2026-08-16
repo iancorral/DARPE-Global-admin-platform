@@ -1,17 +1,28 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Instrument_Sans, Newsreader } from "next/font/google";
 import "./globals.css";
 
-// Registered as `--font-sans`, the variable the Tailwind theme actually reads —
-// under any other name the stack silently falls back to the browser default.
-const geistSans = Geist({
-  variable: "--font-sans",
+/*
+ * Two roles, two faces, nothing else.
+ *
+ * Instrument Sans carries everything operational: navigation, tables, forms,
+ * badges, data. Newsreader is the editorial voice — the wordmark, the greeting
+ * and page titles — and appears nowhere else, which is what keeps it feeling
+ * deliberate rather than decorative.
+ *
+ * Both are self-hosted by next/font at build time, so there is no external
+ * request and no layout shift beyond the swap.
+ */
+const instrumentSans = Instrument_Sans({
+  variable: "--font-instrument-sans",
   subsets: ["latin"],
+  display: "swap",
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const newsreader = Newsreader({
+  variable: "--font-newsreader",
   subsets: ["latin"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -38,9 +49,17 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${instrumentSans.variable} ${newsreader.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      {/*
+        A definite height all the way down — html, body, then the app shell —
+        so the shell is exactly the viewport and nothing can push the document
+        past it. `min-h-full` let the body grow a few pixels beyond the shell,
+        which produced a second scrollbar next to the one inside `main`.
+        Deliberately not `overflow-hidden`: the login page is free to scroll if
+        its card ever outgrows a small screen.
+      */}
+      <body className="h-full">{children}</body>
     </html>
   );
 }

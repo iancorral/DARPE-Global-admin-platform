@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { Check, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { TONE_CLASSES, languageTone } from "@/lib/tone";
 import {
   buildAgendaRows,
   classifyDestination,
@@ -307,6 +308,7 @@ function SessionCard({
 }) {
   const isCancelled = session.status === "CANCELLED";
   const isCompleted = session.status === "COMPLETED";
+  const tone = TONE_CLASSES[languageTone({ name: session.languageName })];
   const students =
     session.participants.map((participant) => participant.studentName).join(", ") || "Class";
 
@@ -325,8 +327,10 @@ function SessionCard({
         isMoving && !isBeingMoved && "opacity-50",
         isBeingMoved && "ring-2 ring-violet-600",
         isCancelled && "border-dashed border-l-muted-foreground/40 bg-muted/50",
-        isCompleted && "border-l-muted-foreground/30 bg-muted/30",
-        !isCancelled && !isCompleted && "border-l-violet-500 bg-card"
+        // Same language tones as the desktop grid; the badges below still say
+        // the status in words, so colour is never the only signal.
+        isCompleted && ["bg-muted/40", tone.line],
+        !isCancelled && !isCompleted && [tone.surface, tone.line]
       )}
     >
       <div className="flex items-start justify-between gap-3">

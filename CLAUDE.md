@@ -82,6 +82,17 @@ Prisma server connections use privileged database access, so Supabase Row Level 
 
 Authorization must be enforced in server-side application code.
 
+## Languages
+
+DARPE teaches seven: Spanish, English, French, Italian, German, Japanese and
+Swedish. `prisma/seed.ts` upserts them by code (`es en fr it de ja sv`); run
+`pnpm db:seed` after adding one. Each has a distinct colour tone — see DESIGN.md.
+
+`pnpm db:seed` also creates demo teachers, students and weekly slots when
+`DARPE_SEED_DEMO=true`, for filling a development database. Every demo address
+is on `@demo.darpe.invalid`, which is how they are found and deleted again.
+Never enable it against a database holding real records you cannot separate.
+
 ## Current Core Domain
 
 The current MVP domain includes:
@@ -197,13 +208,24 @@ Do not assume UTC represents the academy's local wall-clock time.
 The calendar is a weekly interactive calendar.
 
 Current view:
-- Monday through Saturday
+- Monday through Sunday
 - teacher filter
 - sessions positioned according to their actual time and duration
 - overlapping sessions are displayed side-by-side
 - cancelled sessions remain visible but visually distinct
 
-Sunday schedules are supported by the data model and generation logic, even though the current visual calendar does not display a Sunday column.
+The grid shows 07:00–22:00 by default and widens further if a class falls
+outside it. Hours outside the academy's normal working day
+(`src/features/sessions/business-hours.ts`, currently 08:00–20:00) are tinted
+and their creation positions read "Add (outside hours)" — **fully bookable, just
+marked**, because DARPE teaches online across time zones and an early or late
+class is ordinary. Both ranges are parameters, ready for a Settings screen to
+supply the academy's real hours.
+
+Sunday is displayed. It always worked in the data model and in generation, but the
+view used to stop at Saturday, so a Sunday class existed and was invisible. Whether
+DARPE actually teaches on Sundays is still unconfirmed — the column is there so a
+one-off weekend class cannot go missing.
 
 Do not replace the current calendar implementation with a calendar library unless a real requirement makes it necessary.
 
@@ -350,8 +372,8 @@ Always explain important architectural decisions briefly so the developer can un
 
 ## Current Project State
 
-The working tree carries substantial uncommitted work on top of `d0ae3dd`; Ian reviews and
-commits it. Treat the working tree, not HEAD, as the current state.
+The pilot scheduling and operations foundation is merged into `main` (PR #5). Always confirm
+the real state with `git status` and `git log` rather than trusting this section.
 
 Scheduling and calendar:
 - recurring ScheduleSlots with validity windows
@@ -391,9 +413,15 @@ Dashboard (`/dashboard`):
 - greets the signed-in staff member by the first word of their `Profile.name`
   (server-rendered, academy wall-clock hour; blank name degrades to the plain greeting)
 - operational only, timezone-correct via `src/features/dashboard/windows.ts`: today's
-  classes, "needs attention" (past classes still scheduled), next upcoming, this-week
-  status counts, active/trial student and active teacher counts — actionable sections
-  render above summary counts
+  classes, "needs attention", next upcoming, this-week status counts, active/trial
+  student and active teacher counts, and a month line (classes completed and still
+  scheduled this academy month) — actionable sections render above summary counts
+- **a class needs attention once it has fully ended and is still SCHEDULED** — the rule
+  lives in `src/features/dashboard/overdue.ts`, not in the query. Because SQL cannot add
+  a row's own duration to its start, the query splits: classes older than
+  `OVERDUE_WINDOW_MINUTES` have certainly ended and are counted in the database, while
+  the ones inside that window are fetched and judged by `hasFullyEnded`. A class still
+  running is never overdue; an earlier class from today is.
 - all dashboard strings live in `src/features/dashboard/copy.ts` for a later translation
   pass
 - no revenue or financial metrics: the schema has no financial models yet
@@ -402,8 +430,12 @@ Visual foundation:
 - brand tokens from the DARPE presentation live in `src/app/globals.css` (deep violet
   `#482D79` primary, warm `#FAF7FC` background, pale-lavender tints); contrast rationale
   is documented in DESIGN.md §3 — mauve and lavender gray never carry text
-- `font-serif` (system editorial stack) is for page titles, the wordmark and the
-  greeting only; body/UI is Geist registered as `--font-sans`
+- two type roles via `next/font`: Instrument Sans (`font-sans`) for everything
+  operational, Newsreader (`font-serif`) only for the wordmark, greeting, page titles
+  and key figures
+- shared layout primitives in `src/components/shared/`: `PageContainer` (bounds pages at
+  1440px, calendar at 1680px), `PageHeader`, `Section`, `EmptyState`, and `DarpeMotif` —
+  an original decorative mark, never a logo, since DARPE's official mark is still needed
 
 Navigation: grouped sidebar — Overview (Dashboard), Operations (Calendar, Students,
 Teachers). Money (Finance, Teacher payouts) and Settings groups are added only when a
@@ -415,8 +447,7 @@ Testing:
 - suites cover pure domain logic without database access: conflicts, lifecycle,
   eligibility, schemas, series and series editing, scheduling, calendar return,
   element ids, trigger focus, dev origins, list search (`src/lib/search.test.ts`),
-  dashboard windows (`src/features/dashboard/windows.test.ts`) and dashboard copy
-  (`src/features/dashboard/copy.test.ts`)
+  and the dashboard's windows, overdue rule and copy (`src/features/dashboard/*.test.ts`)
 
 ### Latest verification
 
@@ -426,7 +457,7 @@ All four checks were run on 2026-08-15 against this state and passed:
 | --- | --- |
 | `pnpm lint` | clean, no errors or warnings |
 | `pnpm typecheck` | clean, no type errors |
-| `pnpm test` | 15 test files, 339 tests passed |
+| `pnpm test` | 20 test files, 391 tests passed |
 | `pnpm build` | succeeded from a clean `.next` — Next.js 16.2.10, 13 routes |
 
 Re-run these rather than trusting this table after any code change; it is a snapshot, not a

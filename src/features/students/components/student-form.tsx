@@ -17,6 +17,7 @@ import {
   calendarReturnUrl,
   type CalendarReturnContext,
 } from "@/features/sessions/calendar-return";
+import { FormActions, FormCard, FormSection } from "@/components/shared/page";
 import { createStudent, updateStudent } from "../actions";
 import {
   studentFormSchema,
@@ -97,7 +98,7 @@ export function StudentForm({ languages, teachers, calendarReturn, student }: Pr
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="max-w-lg space-y-6">
+      <form onSubmit={form.handleSubmit(onSubmit)}>
         {calendarReturn && (
           <p className="rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
             Adding a student for the class on {calendarReturn.date} at {calendarReturn.time}.
@@ -105,6 +106,8 @@ export function StudentForm({ languages, teachers, calendarReturn, student }: Pr
           </p>
         )}
 
+        <FormCard>
+        <FormSection title="Who they are" description="The name staff will search for.">
         <div className="grid gap-4 sm:grid-cols-2">
           <FormField control={form.control} name="firstName" render={({ field }) => (
             <FormItem>
@@ -121,7 +124,12 @@ export function StudentForm({ languages, teachers, calendarReturn, student }: Pr
             </FormItem>
           )} />
         </div>
+        </FormSection>
 
+        <FormSection
+          title="Contact"
+          description="Optional. Kept internal — never shown outside the admin."
+        >
         <div className="grid gap-4 sm:grid-cols-2">
           <FormField control={form.control} name="email" render={({ field }) => (
             <FormItem>
@@ -138,7 +146,13 @@ export function StudentForm({ languages, teachers, calendarReturn, student }: Pr
             </FormItem>
           )} />
         </div>
+        </FormSection>
 
+        <FormSection
+          title="What they study"
+          description="Decides who can teach them and where they appear on the calendar."
+        >
+        <div className="grid gap-4 sm:grid-cols-2">
         <FormField control={form.control} name="languageId" render={({ field }) => (
           <FormItem>
             <FormLabel>Language</FormLabel>
@@ -148,7 +162,7 @@ export function StudentForm({ languages, teachers, calendarReturn, student }: Pr
                 value={field.value}
                 >
               <FormControl>
-                <SelectTrigger><SelectValue placeholder="Select a language" /></SelectTrigger>
+                <SelectTrigger className="w-full"><SelectValue placeholder="Select a language" /></SelectTrigger>
               </FormControl>
               <SelectContent>
                 {languages.map((l) => (
@@ -172,7 +186,7 @@ export function StudentForm({ languages, teachers, calendarReturn, student }: Pr
                 value={field.value}
                 >
               <FormControl>
-                <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
+                <SelectTrigger className="w-full"><SelectValue placeholder="Unassigned" /></SelectTrigger>
               </FormControl>
               <SelectContent>
                 {teachers.map((t) => (
@@ -187,6 +201,9 @@ export function StudentForm({ languages, teachers, calendarReturn, student }: Pr
           </FormItem>
         )} />
 
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
         <FormField control={form.control} name="modality" render={({ field }) => (
           <FormItem>
             <FormLabel>Modality</FormLabel>
@@ -196,7 +213,7 @@ export function StudentForm({ languages, teachers, calendarReturn, student }: Pr
                 value={field.value}
                 >
               <FormControl>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
               </FormControl>
               <SelectContent>
                 {MODALITIES.map((m) => (
@@ -217,7 +234,7 @@ export function StudentForm({ languages, teachers, calendarReturn, student }: Pr
                 value={field.value}
                 >
               <FormControl>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
               </FormControl>
               <SelectContent>
                 {STUDENT_STATUSES.map((s) => (
@@ -232,6 +249,8 @@ export function StudentForm({ languages, teachers, calendarReturn, student }: Pr
             <FormMessage />
           </FormItem>
         )} />
+
+        </div>
 
         <FormField control={form.control} name="level" render={({ field }) => (
           <FormItem>
@@ -249,7 +268,9 @@ export function StudentForm({ languages, teachers, calendarReturn, student }: Pr
           </FormItem>
         )} />
 
-        <div className="flex gap-3">
+        </FormSection>
+
+        <FormActions>
           <Button type="submit" disabled={form.formState.isSubmitting}>
             {form.formState.isSubmitting
               ? "Saving..."
@@ -266,7 +287,8 @@ export function StudentForm({ languages, teachers, calendarReturn, student }: Pr
           >
             Cancel
           </Button>
-        </div>
+        </FormActions>
+        </FormCard>
       </form>
     </Form>
   );
