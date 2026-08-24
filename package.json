@@ -12,7 +12,11 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts",
+    "import:registro": "tsx scripts/import-registro.ts",
+    "demo:remove": "tsx scripts/remove-demo-data.ts",
+    "cleanup:manual": "tsx scripts/keep-only-imported.ts",
+    "import:teacher-languages": "tsx scripts/backfill-teacher-languages.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { visibleHourRange } from "../layout";
 import { visibleLanguageLegend } from "../legend";
+import type { BusinessHours } from "../business-hours";
 import type { CreateMode } from "../calendar-return";
 import {
   SCHEDULING_INTERVAL_MINUTES,
@@ -66,6 +67,8 @@ type Props = {
   initialCreation: InitialCreation | null;
   /** A student to preselect, from their profile's "Schedule class" link. */
   preselectedStudentId: string | null;
+  /** The academy's teaching day, from Settings. */
+  businessHours: BusinessHours;
 };
 
 export type InitialCreation = {
@@ -97,6 +100,7 @@ export function WeekCalendar({
   movingTeacherBusy,
   initialCreation,
   preselectedStudentId,
+  businessHours,
 }: Props) {
   const router = useRouter();
   const [selected, setSelected] = useState<CalendarSession | null>(null);
@@ -153,7 +157,17 @@ export function WeekCalendar({
         },
       ]
     : sessions;
-  const { startHour, endHour } = visibleHourRange(rangeItems);
+  /*
+   * The grid always shows an hour of margin either side of the academy's
+   * teaching day, so the slots just before opening and just after closing are
+   * always reachable — that is where an international student's class lands —
+   * and widens further for any class already outside even that.
+   */
+  const { startHour, endHour } = visibleHourRange(
+    rangeItems,
+    Math.max(0, businessHours.startHour - 1),
+    Math.min(24, businessHours.endHour + 1)
+  );
   const dayStartMinutes = startHour * 60;
   const hours = Array.from({ length: endHour - startHour }, (_, i) => startHour + i);
 
@@ -280,6 +294,7 @@ export function WeekCalendar({
     destinationStarts,
     creationStarts,
     showsCreation,
+    businessHours,
     occupiedOn,
     originalStartOn,
     disabled: savingTo !== null,

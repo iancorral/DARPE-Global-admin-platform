@@ -348,13 +348,15 @@ Conventions:
   than the fields beside it, leaving the card empty down its left edge. Pair
   related fields in `sm:grid-cols-2` and give selects `w-full`, so no field
   trails off into empty space.
-- **Record lists** — students and teachers are **card grids**, not tables
-  (`sm:grid-cols-2 xl:grid-cols-3`). A table forced a person's name, language,
-  level, teacher and status into columns that had to be read across and then
-  hidden one by one at each breakpoint; a card groups them around the person
-  and works unchanged from a phone to an ultrawide monitor. Each card: avatar,
-  serif name, one secondary line, status badge, language chip, and a footer
-  fact above a rule. The whole card is the link.
+- **Record lists — table or cards, by how the list is read.** A **table** is for
+  a list that grows and is scanned down a column: students, and later payments.
+  A **card grid** is for a short list of unlike facts read one at a time:
+  teachers, of whom there are a handful. Getting this backwards is what made
+  students unusable — cards stop being scannable past about a dozen records.
+  Below `md` both become record cards, because no table fits a phone.
+  A table row navigates with a stretched link (`after:absolute after:inset-0`
+  on the name, `relative` on the row): the whole row is clickable while staying
+  one link in the tab order.
 - **Filter bars** — search and status controls sit on `bg-card` with
   `shadow-xs`, and search carries a leading magnifier icon. On the page
   background with a bare border they read as drawn rectangles rather than
@@ -388,6 +390,21 @@ Conventions:
   see the same times as everyone else. Use `DEFAULT_TIMEZONE` and the helpers in
   `src/lib/datetime.ts`; never format a business date without an explicit timezone, and
   never rely on the server's or the browser's local time.
+
+### Money on screen
+
+- Always show the currency: `$4,200 MXN`, never a bare `$4,200`. DARPE charges in pesos
+  and dollars, and an unlabelled amount is ambiguous by half.
+- **Never draw or sum two currencies as one figure.** Totals render side by side
+  (`$4,200 MXN · $180 USD`). A chart plots one currency — mixing them into one bar
+  height draws a shape that means nothing.
+- Headline figures are whole units; cents are noise at a glance. This is a display
+  rounding and never feeds a calculation — the stored value is always integer cents.
+- A month with no payments shows `$0`, not a placeholder or a dash. Zero is a fact.
+- Paid and unpaid are the only payout states, so they are the whole visual language:
+  teal for settled, amber for still owed. Nothing in between exists.
+- Never invent a financial figure to fill a layout. If the data does not exist, the
+  screen says which decision is missing.
 
 ---
 

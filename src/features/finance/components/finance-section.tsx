@@ -1,30 +1,26 @@
-import { AlertCircle, TrendingUp } from "lucide-react";
-import { EmptyState } from "@/components/shared/empty-state";
-import { Section } from "@/components/shared/page";
-import { Badge } from "@/components/ui/badge";
+import Link from "next/link";
+import { ChevronRight, TrendingDown, TrendingUp } from "lucide-react";
+import { DashboardCard } from "@/components/shared/page";
+import { cn } from "@/lib/utils";
 import { formatMoney, revenueChangePercent, type FinanceSnapshot } from "../snapshot";
 import { RevenueChart } from "./revenue-chart";
 
 /**
- * The dashboard's money overview.
+ * The dashboard's money panel — a preview, not the finance screen.
  *
  * Deliberately knows nothing about where the figures came from: it renders a
- * `FinanceSnapshot`, whether that came from today's demo fixture or from real
- * records later. `null` means finance is not configured, which is the honest
- * state until DARPE records money — not an error and not a zero.
+ * `FinanceSnapshot`. Every figure is money actually received — a month with no
+ * payments shows zero, which is true, rather than a placeholder.
  */
 export function FinanceSection({ snapshot }: { snapshot: FinanceSnapshot | null }) {
   if (!snapshot) {
     return (
-      <Section
-        title="Finance"
-        description="Revenue and outstanding balances, once DARPE records them."
-      >
-        <EmptyState>
-          Finance is not set up yet. Recording payments needs a few business decisions
-          first — how students are charged, and when a payment counts as revenue.
-        </EmptyState>
-      </Section>
+      <DashboardCard title="Money" description="Not set up yet">
+        <p className="text-sm text-muted-foreground">
+          This database has no payment records yet. Run the pending migration and money
+          will appear here as soon as the first payment is recorded.
+        </p>
+      </DashboardCard>
     );
   }
 
@@ -35,11 +31,11 @@ export function FinanceSection({ snapshot }: { snapshot: FinanceSnapshot | null 
     (change === null
       ? ""
       : `, ${change >= 0 ? "up" : "down"} ${Math.abs(change)}% on the previous month`) +
-    `. Outstanding ${formatMoney(snapshot.outstandingCents, snapshot.currency)}` +
+    `. Owed to teachers ${formatMoney(snapshot.outstandingCents, snapshot.currency)}` +
     (snapshot.outstandingCount === null
       ? ""
-      : ` across ${snapshot.outstandingCount} ${
-          snapshot.outstandingCount === 1 ? "item" : "items"
+      : ` across ${snapshot.outstandingCount} unpaid ${
+          snapshot.outstandingCount === 1 ? "payout" : "payouts"
         }`) +
     `. Monthly revenue: ` +
     snapshot.monthlyRevenue
@@ -48,66 +44,61 @@ export function FinanceSection({ snapshot }: { snapshot: FinanceSnapshot | null 
     ".";
 
   return (
-    <Section
-      title="Finance"
-      description={`Revenue and outstanding balances · ${snapshot.currency}`}
-      actions={
-        snapshot.isSample ? (
-          // Unmissable wherever these figures appear: none of them are real.
-          <Badge variant="outline" className="border-tone-amber-line bg-tone-amber text-tone-amber-fg">
-            Sample data
-          </Badge>
-        ) : undefined
+    <DashboardCard
+      title="Money"
+      description={`${snapshot.currency} · last ${snapshot.monthlyRevenue.length} months`}
+      action={
+        <Link
+          href="/finance"
+          className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+        >
+          Finance <ChevronRight aria-hidden="true" className="size-3.5" />
+        </Link>
       }
     >
-      {snapshot.isSample && (
-        <p className="mb-3 text-xs text-muted-foreground">
-          These figures are invented placeholders for reviewing the layout. DARPE records
-          no financial data yet.
+      <figure className="m-0">
+        <figcaption className="sr-only">{summary}</figcaption>
+
+        <p className="font-serif text-2xl font-semibold tracking-tight">
+          {formatMoney(snapshot.currentMonthRevenueCents, snapshot.currency)}
         </p>
-      )}
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="rounded-xl border border-t-2 border-t-tone-teal-fg bg-card p-4">
-          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <TrendingUp aria-hidden="true" className="size-3.5" />
-            Revenue · {snapshot.currentMonthLabel}
-          </p>
-          <p className="mt-1 font-serif text-2xl font-semibold tracking-tight">
-            {formatMoney(snapshot.currentMonthRevenueCents, snapshot.currency)}
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {change === null
-              ? "No previous month to compare"
-              : `${change >= 0 ? "Up" : "Down"} ${Math.abs(change)}% on last month`}
-          </p>
+        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+          <span>{snapshot.currentMonthLabel}</span>
+          {change !== null && (
+            <span
+              className={cn(
+                "inline-flex items-center gap-1 font-medium",
+                change >= 0 ? "text-tone-teal-fg" : "text-tone-rose-fg"
+              )}
+            >
+              {change >= 0 ? (
+                <TrendingUp aria-hidden="true" className="size-3.5" />
+              ) : (
+                <TrendingDown aria-hidden="true" className="size-3.5" />
+              )}
+              {Math.abs(change)}% on last month
+            </span>
+          )}
         </div>
 
-        <div className="rounded-xl border border-t-2 border-t-tone-amber-fg bg-card p-4">
-          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <AlertCircle aria-hidden="true" className="size-3.5" />
-            Outstanding
-          </p>
-          <p className="mt-1 font-serif text-2xl font-semibold tracking-tight">
+        <div className="mt-3">
+          <RevenueChart points={snapshot.monthlyRevenue} currency={snapshot.currency} />
+        </div>
+
+        <p className="mt-3 border-t pt-3 text-xs text-muted-foreground">
+          Owed to teachers{" "}
+          <span className="font-medium text-foreground">
             {formatMoney(snapshot.outstandingCents, snapshot.currency)}
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {snapshot.outstandingCount === null
-              ? "Awaiting payment"
-              : `${snapshot.outstandingCount} unpaid ${
-                  snapshot.outstandingCount === 1 ? "item" : "items"
-                }`}
-          </p>
-        </div>
-      </div>
-
-      <figure className="m-0 mt-4 rounded-xl border bg-card p-4">
-        <figcaption className="mb-2 text-xs text-muted-foreground">
-          Monthly revenue · last {snapshot.monthlyRevenue.length} months
-          <span className="sr-only">. {summary}</span>
-        </figcaption>
-        <RevenueChart points={snapshot.monthlyRevenue} currency={snapshot.currency} />
+          </span>
+          {snapshot.outstandingCount !== null && (
+            <>
+              {" "}
+              · {snapshot.outstandingCount} unpaid{" "}
+              {snapshot.outstandingCount === 1 ? "payout" : "payouts"}
+            </>
+          )}
+        </p>
       </figure>
-    </Section>
+    </DashboardCard>
   );
 }

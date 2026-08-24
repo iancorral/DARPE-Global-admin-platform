@@ -1,23 +1,57 @@
 import "server-only";
-import { env } from "@/lib/env";
-import { demoFinanceSnapshot } from "./demo-fixture";
+import { isMissingTable } from "@/lib/db-errors";
+import { formatInZone, parseDateOnly } from "@/lib/datetime";
+import { getFinanceOverview } from "./queries";
+import { totalByCurrency } from "./money";
 import type { FinanceSnapshot } from "./snapshot";
 
 /**
- * Where the dashboard's finance figures come from.
+ * The dashboard's money panel, from money actually received.
  *
- * Today there is exactly one source and it is a demo fixture, off unless
- * `DARPE_DEMO_FINANCE` is set. There is no real source yet because DARPE has
- * not decided what revenue means, when it is recognised, or how students are
- * charged — and the application must not imply otherwise. With the flag off
- * this returns null and the dashboard says plainly that finance is not
- * configured.
+ * The demo fixture this used to serve is gone: DARPE records real payments now,
+ * so invented figures would compete with them. A month with no payments shows
+ * zero, which is true, rather than a placeholder.
  *
- * When the real models exist, this function is the only thing that changes:
- * it queries them and returns the same `FinanceSnapshot`.
+ * Pesos only. The snapshot carries one currency, and adding pesos to dollars
+ * for a single headline would state a number that is true in neither — the
+ * finance screen is where both are shown side by side.
  */
-export function getFinanceSnapshot(monthStartDate: string): FinanceSnapshot | null {
-  if (!env.DARPE_DEMO_FINANCE) return null;
+export async function getFinanceSnapshot(
+  monthStartDate: string
+): Promise<FinanceSnapshot | null> {
+  let overview: Awaited<ReturnType<typeof getFinanceOverview>>;
 
-  return demoFinanceSnapshot(monthStartDate);
+  try {
+    overview = await getFinanceOverview();
+  } catch (error) {
+    /*
+     * P2021 — the payments tables are not on this database yet, because the
+     * migration adding them has not run. Same rule as the settings table: code
+     * that ships ahead of its migration degrades instead of taking the whole
+     * dashboard down with it, and the panel says finance is not set up. Every
+     * other error is a real fault and is rethrown untouched.
+     */
+    if (isMissingTable(error)) return null;
+    throw error;
+  }
+
+  const pesos = (totals: ReturnType<typeof totalByCurrency>) =>
+    totals.find((total) => total.currency === "MXN")?.amountCents ?? 0;
+
+  return {
+    currency: "MXN",
+    currentMonthLabel: formatInZone(parseDateOnly(monthStartDate), "UTC", "MMMM"),
+    currentMonthRevenueCents: pesos(overview.monthReceived),
+    previousMonthRevenueCents: pesos(overview.previousMonthReceived),
+    outstandingCents: overview.unpaidPayouts.reduce(
+      (total, payout) => total + (payout.currency === "MXN" ? payout.amountCents : 0),
+      0
+    ),
+    outstandingCount: overview.unpaidPayouts.length,
+    monthlyRevenue: overview.monthly.map((month) => ({
+      monthStart: month.monthStart,
+      label: month.label,
+      amountCents: pesos(month.totals),
+    })),
+  };
 }

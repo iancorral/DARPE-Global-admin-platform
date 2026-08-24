@@ -5,7 +5,7 @@ import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TONE_CLASSES, languageTone } from "@/lib/tone";
 import { placeDaySessions } from "../layout";
-import { isOutsideBusinessHour } from "../business-hours";
+import { isOutsideBusinessHour, type BusinessHours } from "../business-hours";
 import {
   formatSlotTime,
   moveGridFocus,
@@ -45,6 +45,8 @@ type Props = {
   destinationStarts: number[];
   creationStarts: number[];
   showsCreation: boolean;
+  /** The academy's teaching day, from Settings. */
+  businessHours: BusinessHours;
   occupiedOn: (date: string) => MinuteRange[];
   originalStartOn: (date: string) => number | null;
   active: DestinationSlot | null;
@@ -73,6 +75,7 @@ export function WeekGrid({
   destinationStarts,
   creationStarts,
   showsCreation,
+  businessHours,
   occupiedOn,
   originalStartOn,
   active,
@@ -224,7 +227,7 @@ export function WeekGrid({
                 key={hour}
                 className={cn(
                   "relative pr-2 text-right text-[11px] tabular-nums",
-                  isOutsideBusinessHour(hour)
+                  isOutsideBusinessHour(hour, businessHours)
                     ? "font-normal text-muted-foreground/60"
                     : "font-medium text-muted-foreground"
                 )}
@@ -259,7 +262,7 @@ export function WeekGrid({
                     // just quieter, so the working day is legible at a glance.
                     className={cn(
                       "border-b border-border/50",
-                      isOutsideBusinessHour(hour) && "bg-muted/40"
+                      isOutsideBusinessHour(hour, businessHours) && "bg-muted/40"
                     )}
                     style={{ height: hourHeight }}
                   />
@@ -270,6 +273,7 @@ export function WeekGrid({
                     date={day.date}
                     dayLabel={`${day.label} ${day.dayNumber}`}
                     starts={creationStarts}
+                    businessHours={businessHours}
                     daySessions={daySessions}
                     dayStartMinutes={dayStartMinutes}
                     pixelsPerHour={hourHeight}

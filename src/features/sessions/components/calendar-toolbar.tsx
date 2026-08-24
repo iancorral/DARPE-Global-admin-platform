@@ -13,6 +13,7 @@ import type { GenerationConflict } from "@/features/schedules/action-results";
 import { addDaysToDate } from "@/lib/datetime";
 import { calendarUrl } from "../scheduling";
 import { REQUEST_FAILED_MESSAGE } from "../request-feedback";
+import { fullName } from "@/lib/names";
 
 const ALL_TEACHERS = "all";
 const MAX_LISTED_CONFLICTS = 4;
@@ -21,7 +22,7 @@ type Props = {
   weekStart: string;
   todayWeekStart: string;
   teacherId?: string;
-  teachers: { id: string; firstName: string; lastName: string }[];
+  teachers: { id: string; firstName: string; lastName: string | null }[];
   generationMonth: { year: number; month: number; label: string };
   /** Carried through navigation so changing week does not drop an active move. */
   movingSessionId?: string;
@@ -131,7 +132,7 @@ export function CalendarToolbar({
         <Select
           items={[
             { label: "All teachers", value: ALL_TEACHERS },
-            ...teachers.map((t) => ({ label: `${t.firstName} ${t.lastName}`, value: t.id })),
+            ...teachers.map((t) => ({ label: fullName(t), value: t.id })),
           ]}
           value={teacherId ?? ALL_TEACHERS}
           onValueChange={(value) =>

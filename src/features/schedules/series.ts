@@ -216,3 +216,34 @@ export function seriesConflictMessage(teacherName: string, whenLabels: string[])
 
   return `${teacherName} already has a class on ${when}. Nothing was created — every week of a series has to be free.`;
 }
+
+/**
+ * The offered lengths of a weekly series, in classes.
+ *
+ * A course is planned as "eight classes", not as "until the 14th of October" —
+ * so this is what the calendar asks for, and the end date is worked out from
+ * it. That also removes the one control staff disliked most: a date picker they
+ * had to count weeks on.
+ */
+export const SERIES_LENGTH_OPTIONS = [2, 4, 6, 8, 12, 16, 24] as const;
+
+/**
+ * The end date a series of `occurrences` weekly classes needs.
+ *
+ * The last class is the boundary, so a run of four starting on the 1st ends on
+ * the 22nd — three weeks later, not four. Fewer than one class is meaningless
+ * and collapses to a single one.
+ */
+export function endsOnForOccurrences(startsOn: string, occurrences: number): string {
+  const weeks = Math.max(1, Math.floor(occurrences)) - 1;
+
+  return addDaysToDate(startsOn, weeks * 7);
+}
+
+/**
+ * How many weekly classes a range holds — the inverse, for showing the stored
+ * end date as the number of classes it stands for.
+ */
+export function occurrencesBetween(startsOn: string, endsOn: string): number {
+  return weeklyOccurrenceDates(startsOn, endsOn).length;
+}

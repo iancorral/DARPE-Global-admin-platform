@@ -14,6 +14,7 @@ import {
 import { StartTimeSelect } from "@/features/sessions/components/start-time-select";
 import { createScheduleSlot, deactivateScheduleSlot } from "../actions";
 import { WEEKDAYS } from "../schemas";
+import { fullName } from "@/lib/names";
 
 type Slot = {
   id: string;
@@ -22,7 +23,7 @@ type Slot = {
   durationMinutes: number;
   startsOn: Date;
   endsOn: Date | null;
-  teacher: { id: string; firstName: string; lastName: string };
+  teacher: { id: string; firstName: string; lastName: string | null };
 };
 
 function toInputDate(value: Date) {
@@ -41,7 +42,7 @@ function today() {
 type Props = {
   studentId: string;
   slots: Slot[];
-  teachers: { id: string; firstName: string; lastName: string }[];
+  teachers: { id: string; firstName: string; lastName: string | null }[];
 };
 
 export function ScheduleManager({ studentId, slots, teachers }: Props) {
@@ -182,7 +183,7 @@ export function ScheduleManager({ studentId, slots, teachers }: Props) {
                 <Label>Teacher</Label>
                 <Select
                   items={teachers.map((t) => ({
-                    label: `${t.firstName} ${t.lastName}`,
+                    label: fullName(t),
                     value: t.id,
                   }))}
                   value={teacherId}

@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScheduleManager } from "@/features/schedules/components/schedule-manager";
 import { DEFAULT_TIMEZONE, startOfWeekDate, todayInZone } from "@/lib/datetime";
+import { fullName } from "@/lib/names";
 
 export default async function StudentProfilePage({
   params,
@@ -57,7 +58,7 @@ export default async function StudentProfilePage({
             {student.level && <span>{student.level}</span>}
             <span>
               {student.primaryTeacher
-                ? `${student.primaryTeacher.firstName} ${student.primaryTeacher.lastName}`
+                ? fullName(student.primaryTeacher)
                 : "No primary teacher"}
             </span>
           </span>

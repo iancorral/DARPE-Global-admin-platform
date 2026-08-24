@@ -6,6 +6,7 @@ import { certainlyEndedBefore, hasFullyEnded } from "./overdue";
 import { describeActivity, groupActivityByWeek, type ActivityWeek } from "./activity";
 import type { ClassStatus, StudentStatus } from "@/generated/prisma/client";
 import type { Prisma } from "@/generated/prisma/client";
+import { fullName } from "@/lib/names";
 
 /** One class as the dashboard lists it: when, who, and where to see it. */
 export type DashboardSession = {
@@ -71,8 +72,8 @@ function toDashboardSession(session: SessionRow): DashboardSession {
     dateLabel: formatInZone(session.startsAt, DEFAULT_TIMEZONE, "EEE, MMM d"),
     weekHref: `/calendar?week=${startOfWeekDate(date)}`,
     status: session.status,
-    studentName: student ? `${student.firstName} ${student.lastName}` : "Class",
-    teacherName: `${session.teacher.firstName} ${session.teacher.lastName}`,
+    studentName: student ? fullName(student) : "Class",
+    teacherName: fullName(session.teacher),
     languageName: session.language.name,
   };
 }

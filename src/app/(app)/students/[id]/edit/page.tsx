@@ -66,7 +66,7 @@ export default async function EditStudentPage({
         student={{
           id: student.id,
           firstName: student.firstName,
-          lastName: student.lastName,
+          lastName: student.lastName ?? "",
           email: student.email ?? "",
           phone: student.phone ?? "",
           languageId: student.languageId,

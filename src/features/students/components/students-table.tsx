@@ -2,16 +2,19 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { GraduationCap, Search } from "lucide-react";
+import { ChevronRight, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
 import { EmptyState } from "@/components/shared/empty-state";
 import { InitialsAvatar, LanguageChip } from "@/components/shared/identity";
-import { INTERACTIVE_CARD } from "@/lib/interaction";
+import { INTERACTIVE_ROW, INTERACTIVE_TABLE_ROW } from "@/lib/interaction";
 import { cn } from "@/lib/utils";
 import { matchesSearch } from "@/lib/search";
 import { STUDENT_STATUSES, STUDENT_STATUS_LABELS } from "../schemas";
@@ -41,17 +44,27 @@ const FILTER_OPTIONS: { value: StatusFilter; label: string }[] = [
   })),
 ];
 
+const ALL_LANGUAGES = "ALL";
+
 /**
- * Students as cards, matching the teachers list.
+ * Students as a table.
  *
- * A table put a person's name, language, level, teacher and status into five
- * columns that had to be read across; a card groups them around the person,
- * and the same card works from a phone to an ultrawide monitor without hiding
- * columns at breakpoints.
+ * Unlike teachers, of whom there are a handful, students are the list that
+ * grows — and a long list is read by comparing down a column: who studies what,
+ * at which level, with whom. Cards make that scan impossible past a dozen
+ * records, so this is a table on desktop and record cards only on a phone,
+ * where a six-column table cannot fit at all.
  */
 export function StudentsTable({ students }: { students: StudentListRow[] }) {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("CURRENT");
+  const [language, setLanguage] = useState<string>(ALL_LANGUAGES);
+
+  // Only the languages these students actually study: a filter that offers a
+  // language nobody takes is a dead end.
+  const languages = [...new Set(students.map((student) => student.languageName))].sort(
+    (a, b) => a.localeCompare(b)
+  );
 
   const visible = students.filter((student) => {
     const statusOk =
@@ -59,8 +72,11 @@ export function StudentsTable({ students }: { students: StudentListRow[] }) {
         ? student.status !== "ARCHIVED"
         : student.status === statusFilter;
 
+    const languageOk = language === ALL_LANGUAGES || student.languageName === language;
+
     return (
       statusOk &&
+      languageOk &&
       matchesSearch(query, [
         student.name,
         student.languageName,
@@ -114,50 +130,147 @@ export function StudentsTable({ students }: { students: StudentListRow[] }) {
         </div>
       </div>
 
+      {languages.length > 1 && (
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by language">
+          <LanguagePill
+            label="All"
+            isActive={language === ALL_LANGUAGES}
+            onClick={() => setLanguage(ALL_LANGUAGES)}
+          />
+          {languages.map((name) => (
+            <LanguagePill
+              key={name}
+              label={name}
+              isActive={language === name}
+              onClick={() => setLanguage(name)}
+            />
+          ))}
+        </div>
+      )}
+
       {visible.length === 0 ? (
         <EmptyState>
           {students.length === 0
             ? "No students yet. Create the first one to get started."
-            : "No students match this search. Try a different name, or widen the status filter."}
+            : "No students match these filters. Try a different name, language or status."}
         </EmptyState>
       ) : (
-        <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {visible.map((student) => (
-            <li key={student.id}>
-              <Link
-                href={`/students/${student.id}`}
-                className={cn(
-                  "flex h-full flex-col gap-4 rounded-xl border bg-card p-5 shadow-xs",
-                  INTERACTIVE_CARD,
-                  student.status === "ARCHIVED" && "opacity-75"
-                )}
-              >
-                <div className="flex items-start gap-3">
-                  <InitialsAvatar name={student.name} className="size-11 text-sm" />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-serif text-base font-semibold">
-                      {student.name}
-                    </p>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {student.level ? `Level ${student.level}` : "No level recorded"}
-                    </p>
-                  </div>
+        <>
+          {/* Record cards below `md`, where six columns cannot fit. */}
+          <ul className="divide-y overflow-hidden rounded-xl border bg-card shadow-xs md:hidden">
+            {visible.map((student) => (
+              <li key={student.id}>
+                <Link
+                  href={`/students/${student.id}`}
+                  className={cn("flex min-h-11 items-center gap-3 px-4 py-3", INTERACTIVE_ROW)}
+                >
+                  <InitialsAvatar name={student.name} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium">{student.name}</span>
+                    <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                      {student.languageName}
+                      {student.level ? ` · ${student.level}` : ""} ·{" "}
+                      {student.teacherName ?? "Unassigned"}
+                    </span>
+                  </span>
                   <Badge variant={STATUS_VARIANT[student.status]}>
                     {STUDENT_STATUS_LABELS[student.status]}
                   </Badge>
-                </div>
+                </Link>
+              </li>
+            ))}
+          </ul>
 
-                <LanguageChip name={student.languageName} className="self-start" />
+          <div className="hidden md:block">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Student</TableHead>
+                  <TableHead>Language</TableHead>
+                  <TableHead>Level</TableHead>
+                  <TableHead>Teacher</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="w-10" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {visible.map((student) => (
+                  <TableRow
+                    key={student.id}
+                    // `relative` anchors the stretched link that covers the row.
+                    className={cn("group relative", INTERACTIVE_TABLE_ROW)}
+                  >
+                    <TableCell>
+                      {/*
+                        The link sits on the name and stretches over the row, so
+                        the whole row is clickable while staying one link in the
+                        tab order and to a screen reader.
+                      */}
+                      <Link
+                        href={`/students/${student.id}`}
+                        className="flex items-center gap-3 font-medium after:absolute after:inset-0 focus-visible:outline-none"
+                      >
+                        <InitialsAvatar name={student.name} className="size-8" />
+                        <span className="truncate group-hover:underline">{student.name}</span>
+                      </Link>
+                    </TableCell>
+                    <TableCell>
+                      <LanguageChip name={student.languageName} />
+                    </TableCell>
+                    <TableCell className="tabular-nums">{student.level ?? "—"}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {student.teacherName ?? "Unassigned"}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={STATUS_VARIANT[student.status]}>
+                        {STUDENT_STATUS_LABELS[student.status]}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <ChevronRight
+                        aria-hidden="true"
+                        className="size-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 motion-reduce:transition-none"
+                      />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
 
-                <p className="mt-auto flex items-center gap-1.5 border-t pt-3 text-xs text-muted-foreground">
-                  <GraduationCap aria-hidden="true" className="size-3.5 shrink-0" />
-                  <span className="truncate">{student.teacherName ?? "No primary teacher"}</span>
-                </p>
-              </Link>
-            </li>
-          ))}
-        </ul>
+          <p className="text-xs text-muted-foreground">
+            {visible.length} of {students.length}{" "}
+            {students.length === 1 ? "student" : "students"}
+          </p>
+        </>
       )}
     </div>
+  );
+}
+
+function LanguagePill({
+  label,
+  isActive,
+  onClick,
+}: {
+  label: string;
+  isActive: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={isActive}
+      onClick={onClick}
+      className={cn(
+        "cursor-pointer rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors motion-reduce:transition-none",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        isActive
+          ? "border-primary bg-primary text-primary-foreground"
+          : "border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground"
+      )}
+    >
+      {label}
+    </button>
   );
 }

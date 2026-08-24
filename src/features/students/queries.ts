@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { DEFAULT_TIMEZONE, formatInZone, startOfWeekDate } from "@/lib/datetime";
 import type { Attendance, ClassStatus, StudentStatus } from "@/generated/prisma/client";
 import type { Prisma } from "@/generated/prisma/client";
+import { fullName } from "@/lib/names";
 
 export type StudentListRow = {
   id: string;
@@ -36,10 +37,10 @@ export async function getStudentRows(): Promise<StudentListRow[]> {
 
   return students.map((student) => ({
     id: student.id,
-    name: `${student.firstName} ${student.lastName}`,
+    name: fullName(student),
     languageName: student.language.name,
     teacherName: student.primaryTeacher
-      ? `${student.primaryTeacher.firstName} ${student.primaryTeacher.lastName}`
+      ? fullName(student.primaryTeacher)
       : null,
     level: student.level,
     status: student.status,
@@ -55,12 +56,27 @@ export async function getStudentFormOptions() {
     }),
     db.teacher.findMany({
       where: { active: true },
-      select: { id: true, firstName: true, lastName: true },
+      // The languages come too, so the form can offer only the teachers who
+      // can actually take the student — the same rule the server enforces.
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        languages: { select: { languageId: true } },
+      },
       orderBy: { firstName: "asc" },
     }),
   ]);
 
-  return { languages, teachers };
+  return {
+    languages,
+    teachers: teachers.map((teacher) => ({
+      id: teacher.id,
+      firstName: teacher.firstName,
+      lastName: teacher.lastName,
+      languageIds: teacher.languages.map((entry) => entry.languageId),
+    })),
+  };
 }
 
 /** One of this student's concrete classes, as the profile lists it. */
@@ -116,7 +132,7 @@ function toStudentSessionRow(session: StudentSessionRecord): StudentSessionRow {
     startLabel: formatInZone(session.startsAt, DEFAULT_TIMEZONE),
     durationMinutes: session.durationMinutes,
     status: session.status,
-    teacherName: `${session.teacher.firstName} ${session.teacher.lastName}`,
+    teacherName: fullName(session.teacher),
     languageName: session.language.name,
     attendance: session.participants[0]?.attendance ?? null,
     weekHref: `/calendar?week=${startOfWeekDate(date)}`,

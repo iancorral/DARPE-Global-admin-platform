@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -20,6 +19,9 @@ import {
   DEFAULT_SERIES_WEEKS,
   defaultSeriesEndsOn,
   weeklyOccurrenceDates,
+  SERIES_LENGTH_OPTIONS,
+  endsOnForOccurrences,
+  occurrencesBetween,
 } from "@/features/schedules/series";
 import { WEEKDAYS } from "@/features/schedules/schemas";
 import { createSession } from "../actions";
@@ -433,21 +435,39 @@ function CreateClassForm({
 
         {mode === "weekly" && (
           <div className="space-y-2 @md:col-span-2">
-            <Label htmlFor="create-class-ends-on">Repeat until</Label>
-            <Input
-              id="create-class-ends-on"
-              type="date"
-              value={endsOn}
-              min={slot.date}
+            <Label htmlFor="create-class-ends-on">Number of classes</Label>
+            {/*
+              A course is planned as "eight classes", not as a date to count
+              weeks up to on a calendar widget. The end date is still what the
+              server receives; it is just worked out from the count.
+            */}
+            <Select
+              items={SERIES_LENGTH_OPTIONS.map((count) => ({
+                label: `${count} classes`,
+                value: String(count),
+              }))}
+              value={String(occurrencesBetween(slot.date, endsOn) || DEFAULT_SERIES_WEEKS)}
               disabled={isPending}
-              onChange={(event) => setEndsOn(event.target.value)}
-            />
+              onValueChange={(value) =>
+                value !== null && setEndsOn(endsOnForOccurrences(slot.date, Number(value)))
+              }
+            >
+              <SelectTrigger id="create-class-ends-on" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {SERIES_LENGTH_OPTIONS.map((count) => (
+                  <SelectItem key={count} value={String(count)}>
+                    {count} classes
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             {seriesDates.length > 0 ? (
               <p className="text-xs text-muted-foreground">
-                Repeats every {weekdayLabel(slot.date)} at {startTime} until {endsOn} —{" "}
+                Repeats every {weekdayLabel(slot.date)} at {startTime} —{" "}
                 {seriesDates.length} {seriesDates.length === 1 ? "class" : "classes"} on{" "}
-                {describeDates(seriesDates)}. The default covers {DEFAULT_SERIES_WEEKS}{" "}
-                weeks.
+                {describeDates(seriesDates)}, ending {endsOn}.
               </p>
             ) : (
               <p className="text-xs text-destructive">

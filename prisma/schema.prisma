@@ -28,6 +28,27 @@ model Profile {
   @@map("profiles")
 }
 
+/// Workspace configuration the academy can change for itself.
+///
+/// A single row, always `id = "academy"`. Settings are one small set of values
+/// with no natural key of their own, and a fixed id makes reading them a
+/// primary-key lookup rather than "the first row, hopefully". The application
+/// falls back to sensible defaults when the row does not exist yet, so nothing
+/// depends on it having been created.
+model AcademySettings {
+  id String @id @default("academy")
+
+  /// First hour of the normal teaching day, 0-23.
+  dayStartHour Int @default(8)
+  /// First hour that is no longer the teaching day, 1-24.
+  dayEndHour   Int @default(20)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("academy_settings")
+}
+
 enum StudentStatus {
   TRIAL
   ACTIVE
@@ -71,6 +92,7 @@ model Language {
   teachers TeacherLanguage[]
   students Student[]
   sessions ClassSession[]
+  groups   Group[]
 
   @@map("languages")
 }
@@ -78,7 +100,9 @@ model Language {
 model Teacher {
   id              String   @id @default(cuid())
   firstName       String
-  lastName        String
+  /// Optional: DARPE's own register holds many people by first name alone.
+  /// Read it through `fullName()`, never by interpolation.
+  lastName        String?
   email           String?  @unique
   phone           String?
   hourlyRateCents Int?
@@ -91,6 +115,8 @@ model Teacher {
   primaryStudents Student[]
   sessions        ClassSession[]
   scheduleSlots   ScheduleSlot[]
+  groups          Group[]
+  payouts         TeacherPayout[]
 
   @@index([active])
   @@map("teachers")
@@ -110,7 +136,8 @@ model TeacherLanguage {
 model Student {
   id               String        @id @default(cuid())
   firstName        String
-  lastName         String
+  /// Optional — see the note on `Teacher.lastName`.
+  lastName         String?
   email            String?
   phone            String?
   level            String?
@@ -127,6 +154,8 @@ model Student {
   primaryTeacher Teacher?           @relation(fields: [primaryTeacherId], references: [id], onDelete: SetNull)
   participations ClassParticipant[]
   scheduleSlots  ScheduleSlot[]
+  groupMemberships GroupMember[]
+  payments       Payment[]
 
   @@index([status])
   @@index([primaryTeacherId])
@@ -143,6 +172,7 @@ model ClassSession {
   notes           String?
   teacherId       String
   languageId      String
+  groupId         String?
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
   scheduleSlotId  String?
@@ -154,6 +184,7 @@ model ClassSession {
   language     Language           @relation(fields: [languageId], references: [id], onDelete: Restrict)
   participants ClassParticipant[]
   scheduleSlot ScheduleSlot?      @relation(fields: [scheduleSlotId], references: [id], onDelete: SetNull)
+  group        Group?             @relation(fields: [groupId], references: [id], onDelete: SetNull)
 
   @@unique([scheduleSlotId, slotOccurrenceOn])
   @@index([startsAt])
@@ -177,7 +208,11 @@ model ClassParticipant {
 
 model ScheduleSlot {
   id              String   @id @default(cuid())
-  studentId       String
+  /// Set for an individual pattern. Exactly one of `studentId` and `groupId`
+  /// is ever set — enforced by a check constraint, since Prisma cannot say it.
+  studentId       String?
+  /// Set for a group pattern.
+  groupId         String?
   teacherId       String
   weekday         Int // 0 = Sunday ... 6 = Saturday
   startTime       String    @db.VarChar(5) // "13:00"
@@ -190,10 +225,127 @@ model ScheduleSlot {
 
   sessions ClassSession[]
 
-  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  teacher Teacher @relation(fields: [teacherId], references: [id], onDelete: Restrict)
+  student Student? @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  group   Group?   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  teacher Teacher  @relation(fields: [teacherId], references: [id], onDelete: Restrict)
 
   @@index([studentId])
+  @@index([groupId])
   @@index([teacherId])
   @@map("schedule_slots")
+}
+
+/// A cohort taught together: one teacher, one language, several students.
+///
+/// Group classes were always possible as records — `ClassSession` has held many
+/// participants from the start — but there was nothing to say *which* students
+/// belong together week after week. That is what this adds, and it is what a
+/// recurring group schedule needs to expand into classes.
+model Group {
+  id         String   @id @default(cuid())
+  name       String   @unique
+  teacherId  String
+  languageId String
+  /// An inactive group keeps its history and stops producing new classes,
+  /// exactly like an inactive teacher.
+  active     Boolean  @default(true)
+  notes      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  teacher       Teacher        @relation(fields: [teacherId], references: [id], onDelete: Restrict)
+  language      Language       @relation(fields: [languageId], references: [id], onDelete: Restrict)
+  members       GroupMember[]
+  scheduleSlots ScheduleSlot[]
+  sessions      ClassSession[]
+
+  @@index([teacherId])
+  @@index([languageId])
+  @@index([active])
+  @@map("groups")
+}
+
+/// A student's place in a group.
+///
+/// `joinedAt` is recorded now so that "who was in the group when" can be
+/// answered later without a second migration; leaving is not modelled yet.
+model GroupMember {
+  groupId   String
+  studentId String
+  joinedAt  DateTime @default(now())
+
+  group   Group   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@id([groupId, studentId])
+  @@index([studentId])
+  @@map("group_members")
+}
+
+/// How money moved. DARPE takes cash, Stripe and bank transfers.
+enum PaymentMethod {
+  CASH
+  STRIPE
+  TRANSFER
+}
+
+/// The currencies DARPE charges in. Students outside Latin America pay in USD.
+enum Currency {
+  MXN
+  USD
+}
+
+/// Money actually received from a student.
+///
+/// Revenue is recognised on `receivedOn` — DARPE counts income when the money
+/// arrives, not when it was agreed or invoiced. That is the whole basis of the
+/// finance figures, so there is no invoice model behind this: a payment is a
+/// record of something that happened, not of something expected.
+model Payment {
+  id          String        @id @default(cuid())
+  studentId   String
+  amountCents Int
+  currency    Currency      @default(MXN)
+  method      PaymentMethod
+  /// The day the money arrived. Revenue counts on this date.
+  receivedOn  DateTime      @db.Date
+  notes       String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Restrict)
+
+  @@index([receivedOn])
+  @@index([studentId])
+  @@map("payments")
+}
+
+/// Whether a teacher has been paid for a period.
+///
+/// Deliberately a reminder rather than a calculation. DARPE already knows what
+/// each teacher earns; what the staff lack is a record of who has been paid and
+/// who is still owed. The hours behind a period are derived from completed
+/// classes rather than stored, so they can never disagree with the calendar.
+model TeacherPayout {
+  id          String         @id @default(cuid())
+  teacherId   String
+  /// Inclusive first and last day of the period being settled.
+  periodStart DateTime       @db.Date
+  periodEnd   DateTime       @db.Date
+  amountCents Int
+  currency    Currency       @default(MXN)
+  /// Null until it has been paid. This flag is the point of the record.
+  paidOn      DateTime?      @db.Date
+  method      PaymentMethod?
+  notes       String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  teacher Teacher @relation(fields: [teacherId], references: [id], onDelete: Restrict)
+
+  /// One settlement per teacher per period; re-settling edits it rather than
+  /// quietly creating a second one.
+  @@unique([teacherId, periodStart, periodEnd])
+  @@index([paidOn])
+  @@map("teacher_payouts")
 }

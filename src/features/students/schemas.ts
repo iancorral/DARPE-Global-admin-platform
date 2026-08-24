@@ -18,7 +18,8 @@ export const STUDENT_STATUS_LABELS: Record<(typeof STUDENT_STATUSES)[number], st
 
 export const studentFormSchema = z.object({
   firstName: z.string().trim().min(1, "First name is required").max(60),
-  lastName: z.string().trim().min(1, "Last name is required").max(60),
+  // Optional: DARPE's register holds many students by first name alone.
+  lastName: z.string().trim().max(60).optional().or(z.literal("")),
   email: z.string().trim().email("Enter a valid email").optional().or(z.literal("")),
   phone: z.string().trim().max(30).optional().or(z.literal("")),
   languageId: z.string().min(1, "Select a language"),

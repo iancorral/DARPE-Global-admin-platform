@@ -26,7 +26,16 @@ import {
   inSchedulingTransaction,
   type ActionResult,
 } from "@/features/sessions/transaction";
-import { expandSlotsForDates, expandSlotsForMonth, occurrenceKey } from "./generation";
+import {
+  expandSlotsForDates,
+  expandSlotsForMonth,
+  occurrenceClassType,
+  occurrenceKey,
+  slotAudience,
+  type GeneratableSlot,
+  type SlotAudience,
+  type SlotAudienceSource,
+} from "./generation";
 import {
   planSeriesEnd,
   planSeriesSplit,
@@ -59,6 +68,21 @@ import type {
   SeriesEndResult,
   SeriesUpdateResult,
 } from "./action-results";
+import { fullName } from "@/lib/names";
+
+/**
+ * Resolves each pattern's audience and drops the ones that have none — a group
+ * with no members yet, most often. Everything downstream then treats an
+ * individual and a group pattern identically.
+ */
+function withAudience<T extends SlotAudienceSource & Omit<GeneratableSlot, keyof SlotAudience>>(
+  slots: T[]
+): (T & SlotAudience)[] {
+  return slots.flatMap((slot) => {
+    const audience = slotAudience(slot);
+    return audience ? [{ ...slot, ...audience }] : [];
+  });
+}
 
 export async function createScheduleSlot(input: ScheduleSlotInput): Promise<ActionResult> {
   await requireUser();
@@ -173,16 +197,26 @@ async function findTeacherOccupancy(
       },
       select: { startsAt: true, durationMinutes: true },
     }),
-    // The same population monthly generation would expand: active patterns, active
-    // teacher, and a student who may still be given classes.
+    // The same population monthly generation would expand: active patterns, an
+    // active teacher, and an audience that may still be given classes — a
+    // student who is active or on trial, or a group that is still running.
     client.scheduleSlot.findMany({
       where: {
         teacherId,
         ...(exclude.slotId && { id: { not: exclude.slotId } }),
         active: true,
-        student: { status: { in: ELIGIBLE_STUDENT_STATUSES } },
+        AND: [
+          {
+            OR: [
+              { student: { status: { in: ELIGIBLE_STUDENT_STATUSES } } },
+              { group: { active: true } },
+            ],
+          },
+          {
+            OR: [{ endsOn: null }, { endsOn: { gte: parseDateOnly(firstDate) } }],
+          },
+        ],
         startsOn: { lte: parseDateOnly(lastDate) },
-        OR: [{ endsOn: null }, { endsOn: { gte: parseDateOnly(firstDate) } }],
       },
       select: {
         id: true,
@@ -193,11 +227,18 @@ async function findTeacherOccupancy(
         endsOn: true,
         teacherId: true,
         student: { select: { id: true, languageId: true } },
+        group: {
+          select: {
+            id: true,
+            languageId: true,
+            members: { select: { studentId: true } },
+          },
+        },
       },
     }),
   ]);
 
-  const implied = expandSlotsForDates(slots, dates);
+  const implied = expandSlotsForDates(withAudience(slots), dates);
 
   const generated =
     implied.length === 0
@@ -313,12 +354,12 @@ export async function createWeeklySeries(input: WeeklySeriesInput): Promise<Acti
     // an active teacher who teaches their language.
     const eligibility = checkManualClassEligibility({
       student: {
-        name: `${student.firstName} ${student.lastName}`,
+        name: fullName(student),
         status: student.status,
         languageId: student.languageId,
       },
       teacher: {
-        name: `${teacher.firstName} ${teacher.lastName}`,
+        name: fullName(teacher),
         active: teacher.active,
         languageIds: teacher.languages.map((entry) => entry.languageId),
       },
@@ -405,7 +446,10 @@ export async function generateMonthlySessions(
     where: {
       active: true,
       teacher: { active: true },
-      student: { status: { in: ELIGIBLE_STUDENT_STATUSES } },
+        OR: [
+          { student: { status: { in: ELIGIBLE_STUDENT_STATUSES } } },
+          { group: { active: true } },
+        ],
     },
     select: {
       id: true,
@@ -416,13 +460,19 @@ export async function generateMonthlySessions(
       endsOn: true,
       teacherId: true,
       teacher: { select: { firstName: true, lastName: true } },
-      student: {
-        select: { id: true, languageId: true, firstName: true, lastName: true },
+      student: { select: { id: true, languageId: true, firstName: true, lastName: true } },
+      group: {
+        select: {
+          id: true,
+          name: true,
+          languageId: true,
+          members: { select: { studentId: true } },
+        },
       },
     },
   });
 
-  const occurrences = expandSlotsForMonth(slots, year, month);
+  const occurrences = expandSlotsForMonth(withAudience(slots), year, month);
   if (occurrences.length === 0) {
     return { success: true, created: 0, skipped: 0, conflicts: [] };
   }
@@ -490,8 +540,11 @@ export async function generateMonthlySessions(
     slots.map((slot) => [
       slot.id,
       {
-        studentName: `${slot.student.firstName} ${slot.student.lastName}`,
-        teacherName: `${slot.teacher.firstName} ${slot.teacher.lastName}`,
+        // A group conflict names the group; there is no single student to name.
+        studentName: slot.student
+          ? fullName(slot.student)
+          : (slot.group?.name ?? "Unknown"),
+        teacherName: fullName(slot.teacher),
       },
     ])
   );
@@ -512,10 +565,10 @@ export async function generateMonthlySessions(
     };
   }
 
-  const studentByOccurrence = new Map(
+  const studentsByOccurrence = new Map(
     accepted.map((occurrence) => [
       occurrenceKey(occurrence.scheduleSlotId, occurrence.occurrenceOn),
-      occurrence.studentId,
+      occurrence.studentIds,
     ])
   );
 
@@ -524,9 +577,10 @@ export async function generateMonthlySessions(
       data: accepted.map((occurrence) => ({
         startsAt: occurrence.startsAt,
         durationMinutes: occurrence.durationMinutes,
-        type: "INDIVIDUAL" as const,
+        type: occurrenceClassType(occurrence),
         teacherId: occurrence.teacherId,
         languageId: occurrence.languageId,
+        groupId: occurrence.groupId,
         scheduleSlotId: occurrence.scheduleSlotId,
         slotOccurrenceOn: parseDateOnly(occurrence.occurrenceOn),
       })),
@@ -534,14 +588,20 @@ export async function generateMonthlySessions(
       skipDuplicates: true,
     });
 
+    // A group class gets one participant row per member, which is what makes
+    // attendance per student possible on it.
     const participants = sessions.flatMap((session) => {
-      const studentId =
+      const studentIds =
         session.scheduleSlotId && session.slotOccurrenceOn
-          ? studentByOccurrence.get(
+          ? studentsByOccurrence.get(
               occurrenceKey(session.scheduleSlotId, formatDateOnly(session.slotOccurrenceOn))
             )
           : undefined;
-      return studentId ? [{ classSessionId: session.id, studentId }] : [];
+
+      return (studentIds ?? []).map((studentId) => ({
+        classSessionId: session.id,
+        studentId,
+      }));
     });
 
     await tx.classParticipant.createMany({ data: participants });
@@ -610,7 +670,20 @@ async function loadSeriesContext(client: Prisma.TransactionClient, sessionId: st
     return { ok: false as const, error: "This class is not part of a recurring series." };
   }
 
-  const slot = session.scheduleSlot;
+  /*
+   * Editing a recurring series still assumes one student: the split carries the
+   * old rule's classes across to new dates, and for a group that would have to
+   * decide what happens to every member's attendance. Rather than guess, a
+   * group series says so and is changed through the group itself.
+   */
+  if (!session.scheduleSlot.student) {
+    return {
+      ok: false as const,
+      error: "This is a group class. Change the group's schedule from the group instead.",
+    };
+  }
+
+  const slot = { ...session.scheduleSlot, student: session.scheduleSlot.student };
   const cutoffOn = formatDateOnly(session.slotOccurrenceOn);
 
   const futureRows = await client.classSession.findMany({
@@ -732,12 +805,12 @@ export async function updateSeriesFromSession(
 
     const eligibility = checkManualClassEligibility({
       student: {
-        name: `${student.firstName} ${student.lastName}`,
+        name: fullName(student),
         status: student.status,
         languageId: student.languageId,
       },
       teacher: {
-        name: `${teacher.firstName} ${teacher.lastName}`,
+        name: fullName(teacher),
         active: teacher.active,
         languageIds: teacher.languages.map((entry) => entry.languageId),
       },

@@ -339,7 +339,9 @@ describe("monthly generation after a split or an ended series", () => {
     startsOn: parseDateOnly("2026-08-03"),
     endsOn: null,
     teacherId: "t1",
-    student: { id: "st1", languageId: "en" },
+    languageId: "en",
+    studentIds: ["st1"],
+    groupId: null,
     ...overrides,
   });
 

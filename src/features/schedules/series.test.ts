@@ -17,6 +17,9 @@ import {
   seriesConflictMessage,
   seriesSessionRecords,
   weeklyOccurrenceDates,
+  endsOnForOccurrences,
+  occurrencesBetween,
+  SERIES_LENGTH_OPTIONS,
 } from "./series";
 
 /**
@@ -271,7 +274,9 @@ describe("a series against another recurring pattern", () => {
       startsOn: new Date("2026-01-05T00:00:00Z"),
       endsOn: null,
       teacherId: "teacher-1",
-      student: { id: "student-2", languageId: "lang-en" },
+      languageId: "lang-en",
+    studentIds: ["student-2"],
+    groupId: null,
     },
   ];
 
@@ -412,5 +417,38 @@ describe("who a series may be created for", () => {
 
   it("refuses an inactive teacher", () => {
     expect(checkManualClassEligibility(candidate({ teacherActive: false })).ok).toBe(false);
+  });
+});
+
+describe("endsOnForOccurrences", () => {
+  it("counts the first class as one, so four classes span three weeks", () => {
+    expect(endsOnForOccurrences("2026-08-03", 4)).toBe("2026-08-24");
+  });
+
+  it("gives a single class the day it starts on", () => {
+    expect(endsOnForOccurrences("2026-08-03", 1)).toBe("2026-08-03");
+  });
+
+  it("never produces a range shorter than one class", () => {
+    expect(endsOnForOccurrences("2026-08-03", 0)).toBe("2026-08-03");
+    expect(endsOnForOccurrences("2026-08-03", -5)).toBe("2026-08-03");
+  });
+
+  it("round-trips with the dates a series actually lands on", () => {
+    for (const count of SERIES_LENGTH_OPTIONS) {
+      const endsOn = endsOnForOccurrences("2026-08-03", count);
+
+      expect(occurrencesBetween("2026-08-03", endsOn)).toBe(count);
+    }
+  });
+});
+
+describe("occurrencesBetween", () => {
+  it("reads a stored end date back as a number of classes", () => {
+    expect(occurrencesBetween("2026-08-03", "2026-08-24")).toBe(4);
+  });
+
+  it("is one for a range covering a single day", () => {
+    expect(occurrencesBetween("2026-08-03", "2026-08-03")).toBe(1);
   });
 });

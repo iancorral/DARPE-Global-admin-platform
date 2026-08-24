@@ -17,6 +17,7 @@ import {
 } from "@/features/sessions/components/week-calendar";
 import { parseWallClockMinutes } from "@/features/sessions/scheduling";
 import { getScheduleFormOptions } from "@/features/schedules/queries";
+import { getTeachingHours } from "@/features/settings/queries";
 import { MONTHS } from "@/features/schedules/schemas";
 import {
   DEFAULT_TIMEZONE,
@@ -55,12 +56,14 @@ export default async function CalendarPage({
   const teacherId = params.success ? params.data.teacher : undefined;
   const movingId = params.success ? params.data.moving : undefined;
 
-  const [sessions, { teachers }, createClassOptions, movingSession] = await Promise.all([
-    getWeekSessions(weekStart, teacherId),
-    getScheduleFormOptions(),
-    getCreateClassOptions(),
-    movingId ? getMovableSession(movingId) : Promise.resolve(null),
-  ]);
+  const [sessions, { teachers }, createClassOptions, movingSession, businessHours] =
+    await Promise.all([
+      getWeekSessions(weekStart, teacherId),
+      getScheduleFormOptions(),
+      getCreateClassOptions(),
+      movingId ? getMovableSession(movingId) : Promise.resolve(null),
+      getTeachingHours(),
+    ]);
 
   // Availability is a second, narrower read rather than part of the calendar's own
   // sessions: the teacher filter decides which cards are drawn, and must never
@@ -165,6 +168,7 @@ export default async function CalendarPage({
         movingTeacherBusy={movingTeacherBusy}
         initialCreation={initialCreation}
         preselectedStudentId={preselected}
+        businessHours={businessHours}
       />
 
       {sessions.length === 0 && (
