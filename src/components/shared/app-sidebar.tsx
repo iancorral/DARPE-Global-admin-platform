@@ -2,16 +2,22 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, CalendarDays, GraduationCap, Users } from "lucide-react";
+import {
+  LayoutDashboard,
+  CalendarDays,
+  GraduationCap,
+  Receipt,
+  Settings,
+  Users,
+  UsersRound,
+  Wallet,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LogoutButton } from "@/features/auth/components/logout-button";
 
 /*
- * Grouped information architecture. Future groups — Money (Finance, Teacher
- * payouts) and Settings — are deliberately absent until a real route exists:
- * navigation never links to a page that is not there. The mobile bar keeps the
- * same destinations flattened, with Dashboard shortened to "Home"; a "More"
- * tab appears only once it has at least one real destination to hold.
+ * Grouped information architecture. Every entry points at a route that exists —
+ * navigation never links to a page that is not there.
  */
 type NavItem = {
   href: string;
@@ -31,12 +37,32 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
     items: [
       { href: "/calendar", label: "Calendar", icon: CalendarDays },
       { href: "/students", label: "Students", icon: Users },
+      { href: "/groups", label: "Groups", icon: UsersRound },
       { href: "/teachers", label: "Teachers", icon: GraduationCap },
     ],
   },
+  {
+    label: "Money",
+    items: [
+      { href: "/finance", label: "Finance", icon: Wallet },
+      { href: "/payments", label: "Payments", icon: Receipt },
+    ],
+  },
+  {
+    label: "Workspace",
+    items: [{ href: "/settings", label: "Settings", icon: Settings }],
+  },
 ];
 
-const MOBILE_ITEMS = NAV_GROUPS.flatMap((group) => group.items);
+/*
+ * The phone bar keeps only what is used on the move. Money and settings are desk
+ * work, so they live in the sidebar rather than spending one of four tabs.
+ */
+const DESK_ONLY_GROUPS = new Set(["Money", "Workspace"]);
+
+const MOBILE_ITEMS = NAV_GROUPS.filter(
+  (group) => !DESK_ONLY_GROUPS.has(group.label)
+).flatMap((group) => group.items);
 
 export function AppSidebar({ userName, userRole }: { userName: string; userRole: string }) {
   const pathname = usePathname();

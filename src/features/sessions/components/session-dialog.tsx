@@ -16,7 +16,13 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { endSeriesFromSession, updateSeriesFromSession } from "@/features/schedules/actions";
-import { defaultSeriesEndsOn, weeklyOccurrenceDates } from "@/features/schedules/series";
+import {
+  SERIES_LENGTH_OPTIONS,
+  defaultSeriesEndsOn,
+  endsOnForOccurrences,
+  occurrencesBetween,
+  weeklyOccurrenceDates,
+} from "@/features/schedules/series";
 import { completeSession, setSessionStatus, updateSessionScheduling } from "../actions";
 import { canEditScheduling, canRecordAttendance } from "../lifecycle";
 import { calendarUrl } from "../scheduling";
@@ -396,16 +402,25 @@ function SessionDetail({
             </p>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="session-date">{isSeriesScope ? "New first date" : "Date"}</Label>
-            <Input
-              id="session-date"
-              type="date"
-              value={date}
-              min={isSeriesScope ? session.date : undefined}
-              onChange={(e) => setDate(e.target.value)}
-            />
-          </div>
+          {/*
+            No date field when editing one class. Moving a class to another day
+            is what move mode is for — it shows the week and the teacher's other
+            classes while you choose — so a second way to do it here would be a
+            worse version of the same thing. What is actually edited from this
+            dialog is the teacher, the time and the length.
+          */}
+          {isSeriesScope && (
+            <div className="space-y-2">
+              <Label htmlFor="session-date">New first date</Label>
+              <Input
+                id="session-date"
+                type="date"
+                value={date}
+                min={session.date}
+                onChange={(e) => setDate(e.target.value)}
+              />
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="session-time">Start time</Label>
@@ -442,14 +457,28 @@ function SessionDetail({
 
           {isSeriesScope && (
             <div className="space-y-2 @md:col-span-2">
-              <Label htmlFor="session-repeat-until">Repeat until</Label>
-              <Input
-                id="session-repeat-until"
-                type="date"
-                value={endsOn}
-                min={date}
-                onChange={(e) => setEndsOn(e.target.value)}
-              />
+              <Label htmlFor="session-repeat-until">Number of classes</Label>
+              <Select
+                items={SERIES_LENGTH_OPTIONS.map((count) => ({
+                  label: `${count} classes`,
+                  value: String(count),
+                }))}
+                value={String(occurrencesBetween(date, endsOn) || 4)}
+                onValueChange={(value) =>
+                  value !== null && setEndsOn(endsOnForOccurrences(date, Number(value)))
+                }
+              >
+                <SelectTrigger id="session-repeat-until" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SERIES_LENGTH_OPTIONS.map((count) => (
+                    <SelectItem key={count} value={String(count)}>
+                      {count} classes
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <p className="text-xs text-muted-foreground">
                 {seriesDates.length > 0
                   ? `${seriesDates.length} weekly ${seriesDates.length === 1 ? "class" : "classes"} from ${date}. A replacement series always has an end date, so choose one even if the current schedule had none.`

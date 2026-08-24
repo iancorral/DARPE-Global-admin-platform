@@ -32,6 +32,7 @@ import {
   type UpdateSessionSchedulingInput,
 } from "./schemas";
 import { Prisma } from "@/generated/prisma/client";
+import { fullName } from "@/lib/names";
 
 /**
  * The first active session that would double-book this teacher. Cancelled classes
@@ -136,12 +137,12 @@ export async function createSession(input: CreateSessionInput): Promise<ActionRe
 
     const eligibility = checkManualClassEligibility({
       student: {
-        name: `${student.firstName} ${student.lastName}`,
+        name: fullName(student),
         status: student.status,
         languageId: student.languageId,
       },
       teacher: {
-        name: `${teacher.firstName} ${teacher.lastName}`,
+        name: fullName(teacher),
         active: teacher.active,
         languageIds: teacher.languages.map((entry) => entry.languageId),
       },
@@ -263,7 +264,7 @@ export async function updateSessionScheduling(
 
     const eligibility = checkTeacherForLanguage(
       {
-        name: `${teacher.firstName} ${teacher.lastName}`,
+        name: fullName(teacher),
         active: teacher.active,
         languageIds: teacher.languages.map((entry) => entry.languageId),
       },

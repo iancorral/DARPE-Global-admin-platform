@@ -56,7 +56,7 @@ export default async function EditTeacherPage({
           id: teacher.id,
           active: teacher.active,
           firstName: teacher.firstName,
-          lastName: teacher.lastName,
+          lastName: teacher.lastName ?? "",
           email: teacher.email ?? "",
           phone: teacher.phone ?? "",
           languageIds: teacher.languages.map((entry) => entry.languageId),

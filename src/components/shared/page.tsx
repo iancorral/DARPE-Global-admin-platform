@@ -196,3 +196,49 @@ export function Section({
     </section>
   );
 }
+
+/**
+ * A panel on the dashboard.
+ *
+ * Every block there is the same object — a titled card with an optional link in
+ * its header — so the page reads as one grid rather than as sections that each
+ * invented their own frame. `bodyClassName="p-0"` is for a panel whose content
+ * is a full-bleed list that draws its own row dividers.
+ */
+export function DashboardCard({
+  title,
+  description,
+  action,
+  icon,
+  children,
+  className,
+  bodyClassName,
+}: {
+  title: string;
+  description?: string;
+  action?: React.ReactNode;
+  icon?: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+  bodyClassName?: string;
+}) {
+  return (
+    <section
+      className={cn("overflow-hidden rounded-xl border bg-card shadow-xs", className)}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3 p-5 pb-4">
+        <div className="min-w-0">
+          <h2 className="flex items-center gap-2 text-sm font-semibold">
+            {icon}
+            {title}
+          </h2>
+          {description && (
+            <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
+          )}
+        </div>
+        {action}
+      </div>
+      <div className={cn("px-5 pb-5", bodyClassName)}>{children}</div>
+    </section>
+  );
+}

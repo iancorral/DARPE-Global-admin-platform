@@ -1,9 +1,11 @@
 import Link from "next/link";
 import {
   ArrowRight,
+  Bell,
   CalendarCheck,
   CalendarClock,
   CalendarDays,
+  ChevronRight,
   GraduationCap,
   Users,
 } from "lucide-react";
@@ -18,8 +20,7 @@ import { KpiCard } from "@/features/dashboard/components/kpi-card";
 import { getFinanceSnapshot } from "@/features/finance/provider";
 import { FinanceSection } from "@/features/finance/components/finance-section";
 import { InitialsAvatar } from "@/components/shared/identity";
-import { EmptyState } from "@/components/shared/empty-state";
-import { PageContainer, PageHeader, Section } from "@/components/shared/page";
+import { DashboardCard, PageContainer, PageHeader } from "@/components/shared/page";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -39,9 +40,7 @@ const CLASS_STATUS_VARIANT: Record<ClassStatus, "default" | "secondary" | "outli
 
 export default async function DashboardPage() {
   const [profile, data] = await Promise.all([getCurrentUser(), getDashboardData()]);
-  // Null unless the demo flag is on: there is no real finance data yet, and the
-  // section says so rather than showing zeros.
-  const finance = getFinanceSnapshot(data.monthStartDate);
+  const finance = await getFinanceSnapshot(data.monthStartDate);
 
   // Greeting time is academy wall-clock, never the server's. Rendered entirely
   // on the server, so there is nothing for the client to recompute and disagree
@@ -108,66 +107,70 @@ export default async function DashboardPage() {
       </div>
 
       {/*
-        Three things, in the order a coordinator actually needs them: how the
-        month is going, what is happening today, and anything left unresolved.
-        Everything else — the rest of the week, the full lists — belongs on the
-        calendar and the list pages, and repeating it here only made the page
-        harder to read.
+        Two bands of the same shape: the wide half carries what you act on — the
+        month's activity, then anything unresolved — and the narrow half carries
+        what you read — today, then money. Everything else lives on the calendar
+        and the list pages; repeating it here only made the page harder to read.
       */}
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <Section
-            title={DASHBOARD_COPY.activityTitle}
-            description={DASHBOARD_COPY.activityDescription(data.monthLabel)}
-          >
-            <div className="rounded-xl border bg-card p-5 shadow-xs">
-              <ActivityChart weeks={data.activityWeeks} summary={data.activitySummary} />
-            </div>
-          </Section>
-        </div>
+      <div className="grid items-start gap-5 lg:grid-cols-3">
+        <DashboardCard
+          className="lg:col-span-2"
+          title={DASHBOARD_COPY.activityTitle}
+          description={DASHBOARD_COPY.activityDescription(data.monthLabel)}
+        >
+          <ActivityChart weeks={data.activityWeeks} summary={data.activitySummary} />
+        </DashboardCard>
 
-        <div className="lg:col-span-1">
-          <Section
-            title={DASHBOARD_COPY.todayTitle}
-            description={
-              data.today.length === 0
-                ? data.todayLabel
-                : `${data.todayLabel} · ${DASHBOARD_COPY.todayCount(data.today.length)}`
-            }
-          >
-            {data.today.length === 0 ? (
-              <EmptyState tone="compact">{DASHBOARD_COPY.todayEmpty}</EmptyState>
-            ) : (
-              <SessionList sessions={data.today} showDate={false} />
-            )}
-          </Section>
+        <DashboardCard
+          title={DASHBOARD_COPY.todayTitle}
+          description={
+            data.today.length === 0
+              ? data.todayLabel
+              : `${data.todayLabel} · ${DASHBOARD_COPY.todayCount(data.today.length)}`
+          }
+          action={
+            <Link
+              href={data.calendarHref}
+              className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+            >
+              View calendar <ChevronRight aria-hidden="true" className="size-3.5" />
+            </Link>
+          }
+          bodyClassName="p-0"
+        >
+          {data.today.length === 0 ? (
+            <p className="px-5 pb-5 text-sm text-muted-foreground">
+              {DASHBOARD_COPY.todayEmpty}
+            </p>
+          ) : (
+            <SessionList sessions={data.today} showDate={false} />
+          )}
+        </DashboardCard>
 
-        </div>
-      </div>
-
-      {/*
-        Only shown when something is actually unresolved. An empty "nothing to
-        do" panel every day is noise on the one section that should mean work.
-      */}
-      {data.needCompletion.length > 0 && (
-        <div className="mt-6">
-          <Section
+        {/*
+          Only rendered when something is actually unresolved. An empty
+          "nothing to do" panel every day is noise on the one section that is
+          supposed to mean work.
+        */}
+        {data.needCompletion.length > 0 && (
+          <DashboardCard
+            className="lg:col-span-2"
             title={DASHBOARD_COPY.attentionTitle}
             description={DASHBOARD_COPY.attentionDescription}
+            icon={<Bell aria-hidden="true" className="size-4" />}
+            bodyClassName="p-0"
           >
             <SessionList sessions={data.needCompletion} showDate />
             {data.needCompletionCount > data.needCompletion.length && (
-              <p className="mt-3 text-xs text-muted-foreground">
+              <p className="px-5 py-3 text-xs text-muted-foreground">
                 {DASHBOARD_COPY.attentionMore(
                   data.needCompletionCount - data.needCompletion.length
                 )}
               </p>
             )}
-          </Section>
-        </div>
-      )}
+          </DashboardCard>
+        )}
 
-      <div className="mt-6">
         <FinanceSection snapshot={finance} />
       </div>
     </PageContainer>
@@ -184,7 +187,7 @@ function SessionList({
   compact?: boolean;
 }) {
   return (
-    <ul className="divide-y overflow-hidden rounded-xl border bg-card">
+    <ul className="divide-y border-t">
       {sessions.map((session) => {
         const tone = TONE_CLASSES[languageTone({ name: session.languageName })];
 

@@ -98,7 +98,7 @@ export function RevenueChart({
     <div className={cn("w-full", className)}>
       <div
         ref={plotRef}
-        className="relative h-48 w-full"
+        className="relative h-32 w-full"
         onMouseMove={trackPointer}
         onMouseLeave={() => setActive(null)}
       >

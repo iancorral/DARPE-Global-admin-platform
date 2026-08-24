@@ -104,6 +104,10 @@ The current MVP domain includes:
 - ScheduleSlot
 - ClassSession
 - ClassParticipant
+- Group / GroupMember
+- AcademySettings
+- Payment
+- TeacherPayout
 
 Teachers:
 - can teach multiple languages
@@ -116,8 +120,9 @@ Students:
 - recurring schedules are represented through ScheduleSlot
 
 Classes:
-- can currently be individual
-- group classes are a future requirement and are not yet represented by ScheduleSlot
+- individual and group classes both exist. A `ScheduleSlot` belongs to **either** a
+  student or a `Group`, never both and never neither — a database CHECK constraint
+  enforces it, since Prisma cannot
 - have a status of SCHEDULED, COMPLETED or CANCELLED
 - classes can be rescheduled
 - classes can be cancelled
@@ -189,6 +194,55 @@ Back-to-back classes are allowed.
 
 Cancelled sessions do not block a teacher.
 
+## Groups
+
+A group is **one teacher and one language**, taught to several students. Settled rules:
+
+- Only students who study the group's language, and who are active or on trial, may
+  join. Checked on the server every time.
+- The class language comes from the **group**, never from a member.
+- A group with no members generates nothing — a class with nobody in it is not a class.
+- A generated group class carries **one `ClassParticipant` per member**, which is what
+  makes attendance per student work exactly as it does for an individual class.
+- Removing a member never touches classes that already happened; they keep the student
+  and their attendance.
+- Closing a group (`active: false`) keeps its history and stops generation, like an
+  inactive teacher.
+- The group's language is locked while it has members: they joined because they study it.
+- **Editing a recurring series from a group class is refused** with a message pointing at
+  the group. Splitting a group series would have to decide what happens to every member's
+  attendance, and that rule is not settled — do not invent it.
+
+## Money
+
+Two records, both deliberately small. DARPE's finance rules are not settled, so the
+schema stores what is already true and nothing that would encode a guess.
+
+`Payment` — money a student actually handed over. `receivedOn` is the day it arrived,
+and **revenue counts on that date**: DARPE recognises money on receipt, not on invoice
+or on the class it pays for. There is no invoice, no expected amount and no due date,
+so the app can never show "outstanding from students" — the finance screen says so
+rather than leaving a hole where a figure should be.
+
+`TeacherPayout` — one row per teacher per period. Its point is `paidOn`: null means
+still owed, a date means settled. The amount is typed in by staff, because the rates
+live with them and not in this system yet. Unique on `(teacherId, periodStart,
+periodEnd)`, so recording a period twice updates it instead of duplicating it.
+
+Hours are **never stored on a payout**. They are derived from COMPLETED classes in the
+period (`teachingLoad` in `src/features/finance/money.ts`), split individual/group, so
+they can never drift from the calendar. Whether cancelled classes are paid is still
+unconfirmed — currently they count for nothing, and only COMPLETED classes do.
+
+Amounts are integer cents (`amountCents`), always. `parseAmountToCents` splits on the
+decimal point rather than multiplying by 100, because `2380.15 * 100` is not 238015 in
+floating point. **MXN and USD are never added together** — `totalByCurrency` returns one
+total per currency and every screen shows them side by side. A single mixed figure would
+be true in neither currency.
+
+Payment methods are CASH, STRIPE and TRANSFER. Stripe is a label here, not an
+integration: nothing in this app talks to Stripe.
+
 ## Timezone
 
 DARPE currently operates in:
@@ -238,7 +292,7 @@ Known business context:
 - internal staff organize the final schedule
 - Google Calendar is currently used operationally
 - classes may be rescheduled or cancelled
-- individual and group classes exist in the business, but group recurring classes are not yet implemented
+- individual and group classes both exist, and both support recurring schedules
 - payments currently happen mainly by bank transfer and cash
 - Stripe may be relevant later
 - vacations and holidays need proper business validation before implementing automation
@@ -257,7 +311,6 @@ Do not prematurely implement:
 - payment processing
 - teacher accounts
 - file management
-- group-class architecture
 - unnecessary permissions
 
 These may belong to later phases.
@@ -424,7 +477,9 @@ Dashboard (`/dashboard`):
   running is never overdue; an earlier class from today is.
 - all dashboard strings live in `src/features/dashboard/copy.ts` for a later translation
   pass
-- no revenue or financial metrics: the schema has no financial models yet
+- a money panel fed by real payments (`src/features/finance/provider.ts`): this month in
+  pesos, the change on last month, six months of history and what is still owed to
+  teachers. The sample-data fixture that used to fill it is gone.
 
 Visual foundation:
 - brand tokens from the DARPE presentation live in `src/app/globals.css` (deep violet
@@ -437,28 +492,41 @@ Visual foundation:
   1440px, calendar at 1680px), `PageHeader`, `Section`, `EmptyState`, and `DarpeMotif` —
   an original decorative mark, never a logo, since DARPE's official mark is still needed
 
+Money screens:
+- `/payments` — payments received this month, and every active teacher's period with
+  their hours and whether they have been paid. A teacher who taught nothing still
+  appears, because a zero is how staff know the period was checked.
+- `/finance` — received this month and owed to teachers, six months of peso history, a
+  breakdown by method, and the unpaid payouts. No "outstanding from students", with a
+  line on the page explaining why.
+- both screens and the dashboard panel degrade to a "run the pending migration" state on
+  Prisma P2021 (`isMissingTable` in `src/lib/db-errors.ts`) instead of crashing. Only
+  that one code is caught.
+
 Navigation: grouped sidebar — Overview (Dashboard), Operations (Calendar, Students,
-Teachers). Money (Finance, Teacher payouts) and Settings groups are added only when a
-real route exists; navigation never links to a missing page. Mobile: Home, Calendar,
-Students, Teachers.
+Groups, Teachers), Money (Finance, Payments), Workspace (Settings). Navigation never
+links to a missing page. Mobile keeps four tabs: Home, Calendar, Students, Teachers —
+money and settings are desk work.
 
 Testing:
 - Vitest (`vitest.config.mts`), run with `pnpm test`
 - suites cover pure domain logic without database access: conflicts, lifecycle,
-  eligibility, schemas, series and series editing, scheduling, calendar return,
-  element ids, trigger focus, dev origins, list search (`src/lib/search.test.ts`),
-  and the dashboard's windows, overdue rule and copy (`src/features/dashboard/*.test.ts`)
+  eligibility, schemas, series and series editing, scheduling, calendar layout, calendar
+  return, element ids, trigger focus, dev origins, names, tone, list search
+  (`src/lib/search.test.ts`), the dashboard's windows, overdue rule and copy, and money
+  (`src/features/finance/money.test.ts` — cents parsing, per-currency totals, teaching
+  load)
 
 ### Latest verification
 
-All four checks were run on 2026-08-15 against this state and passed:
+All four checks were run on 2026-08-23 against this state and passed:
 
 | Command | Result |
 | --- | --- |
 | `pnpm lint` | clean, no errors or warnings |
 | `pnpm typecheck` | clean, no type errors |
-| `pnpm test` | 20 test files, 391 tests passed |
-| `pnpm build` | succeeded from a clean `.next` — Next.js 16.2.10, 13 routes |
+| `pnpm test` | 28 test files, 507 tests passed |
+| `pnpm build` | succeeded from a clean `.next` — 20 routes |
 
 Re-run these rather than trusting this table after any code change; it is a snapshot, not a
 standing guarantee.

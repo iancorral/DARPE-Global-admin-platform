@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { DEFAULT_TIMEZONE, formatInZone, startOfWeekDate } from "@/lib/datetime";
 import { dashboardWindows } from "@/features/dashboard/windows";
 import type { ClassStatus, StudentStatus } from "@/generated/prisma/client";
+import { fullName } from "@/lib/names";
 
 export type TeacherListRow = {
   id: string;
@@ -35,7 +36,7 @@ export async function getTeacherRows(): Promise<TeacherListRow[]> {
 
   return teachers.map((teacher) => ({
     id: teacher.id,
-    name: `${teacher.firstName} ${teacher.lastName}`,
+    name: fullName(teacher),
     email: teacher.email,
     active: teacher.active,
     languageNames: teacher.languages.map((entry) => entry.language.name),
@@ -165,14 +166,14 @@ export async function getTeacherProfile(
 
   return {
     id: teacher.id,
-    name: `${teacher.firstName} ${teacher.lastName}`,
+    name: fullName(teacher),
     active: teacher.active,
     email: teacher.email,
     phone: teacher.phone,
     languageNames: teacher.languages.map((entry) => entry.language.name),
     students: students.map((student) => ({
       id: student.id,
-      name: `${student.firstName} ${student.lastName}`,
+      name: fullName(student),
       languageName: student.language.name,
       status: student.status,
     })),
@@ -186,7 +187,7 @@ export async function getTeacherProfile(
         startLabel: formatInZone(session.startsAt, DEFAULT_TIMEZONE),
         durationMinutes: session.durationMinutes,
         status: session.status,
-        studentName: student ? `${student.firstName} ${student.lastName}` : "Class",
+        studentName: student ? fullName(student) : "Class",
         languageName: session.language.name,
         weekHref: `/calendar?week=${startOfWeekDate(date)}&teacher=${teacher.id}`,
       };

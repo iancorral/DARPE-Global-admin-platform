@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,7 @@ import {
   STUDENT_STATUS_LABELS,
   type StudentFormInput,
 } from "../schemas";
+import { fullName } from "@/lib/names";
 
 const MODALITY_LABELS: Record<(typeof MODALITIES)[number], string> = {
   ADVISORY: "Advisory (per hour)",
@@ -41,7 +42,13 @@ type Props = {
    * even if they have gone inactive, so opening the form never silently drops an
    * assignment that is still on the record.
    */
-  teachers: { id: string; firstName: string; lastName: string; inactive?: boolean }[];
+  teachers: {
+    id: string;
+    firstName: string;
+    lastName: string | null;
+    languageIds?: string[];
+    inactive?: boolean;
+  }[];
   /**
    * Where on the calendar this student is being added from, when scheduling a
    * class is what led here. The form itself is unchanged either way — it gains no
@@ -65,6 +72,23 @@ export function StudentForm({ languages, teachers, calendarReturn, student }: Pr
       languageId: "", primaryTeacherId: "", modality: "INDIVIDUAL_EXTENSIVE",
       status: "ACTIVE", level: "", goal: "",
     },
+  });
+
+  // `useWatch` rather than `form.watch()`: the subscription is memoizable, so
+  // only this field's changes re-render the list below.
+  const languageId = useWatch({ control: form.control, name: "languageId" });
+
+  /*
+   * Only teachers who teach the language chosen above, because a teacher who
+   * does not is refused by the server anyway — offering them just invites an
+   * error. A teacher already assigned is kept whatever their languages say, so
+   * opening an existing student never silently drops their teacher.
+   */
+  const eligibleTeachers = teachers.filter((teacher) => {
+    if (teacher.id === student?.primaryTeacherId) return true;
+    if (!languageId || !teacher.languageIds) return true;
+
+    return teacher.languageIds.includes(languageId);
   });
 
   async function onSubmit(values: StudentFormInput) {
@@ -178,8 +202,8 @@ export function StudentForm({ languages, teachers, calendarReturn, student }: Pr
           <FormItem>
             <FormLabel>Primary teacher <span className="text-muted-foreground">(optional)</span></FormLabel>
             <Select
-                items={teachers.map((t) => ({
-                  label: `${t.firstName} ${t.lastName}${t.inactive ? " (inactive)" : ""}`,
+                items={eligibleTeachers.map((t) => ({
+                  label: `${fullName(t)}${t.inactive ? " (inactive)" : ""}`,
                   value: t.id,
                 }))}
                 onValueChange={field.onChange}
@@ -189,14 +213,19 @@ export function StudentForm({ languages, teachers, calendarReturn, student }: Pr
                 <SelectTrigger className="w-full"><SelectValue placeholder="Unassigned" /></SelectTrigger>
               </FormControl>
               <SelectContent>
-                {teachers.map((t) => (
+                {eligibleTeachers.map((t) => (
                   <SelectItem key={t.id} value={t.id}>
-                    {t.firstName} {t.lastName}
+                    {fullName(t)}
                     {t.inactive ? " (inactive)" : ""}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            <p className="text-xs text-muted-foreground">
+              {languageId
+                ? "Only teachers who teach this language."
+                : "Choose a language first to narrow this list."}
+            </p>
             <FormMessage />
           </FormItem>
         )} />

@@ -11,7 +11,7 @@ import {
   type MinuteRange,
 } from "../scheduling";
 import { createPositionId } from "../element-ids";
-import { isOutsideBusinessHours } from "../business-hours";
+import { isOutsideBusinessHours, type BusinessHours } from "../business-hours";
 
 export type CreatePosition = {
   date: string;
@@ -30,6 +30,8 @@ type Props = {
   date: string;
   dayLabel: string;
   starts: number[];
+  /** The academy's teaching day, from Settings. */
+  businessHours: BusinessHours;
   /** The classes drawn on this day, used only to place the label clear of them. */
   daySessions: MinuteRange[];
   dayStartMinutes: number;
@@ -59,6 +61,7 @@ export function CreatePositions({
   date,
   dayLabel,
   starts,
+  businessHours,
   daySessions,
   dayStartMinutes,
   pixelsPerHour,
@@ -78,7 +81,7 @@ export function CreatePositions({
         // Bookable exactly like any other time — the wording and the amber tint
         // only say that it falls outside the academy's normal day, which
         // happens whenever a student is in another time zone.
-        const outsideHours = isOutsideBusinessHours(startMinutes);
+        const outsideHours = isOutsideBusinessHours(startMinutes, businessHours);
         const position = { date, startMinutes };
         const isTabbable =
           tabbable?.date === date && tabbable.startMinutes === startMinutes;

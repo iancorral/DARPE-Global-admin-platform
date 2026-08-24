@@ -4,6 +4,7 @@ import { DEFAULT_TIMEZONE, addDaysToDate, formatInZone, zonedToUtc } from "@/lib
 import { ELIGIBLE_STUDENT_STATUSES } from "./eligibility";
 import { TEACHER_OCCUPYING_STATUSES } from "./lifecycle";
 import type { Attendance, ClassStatus } from "@/generated/prisma/client";
+import { fullName } from "@/lib/names";
 
 export type SessionParticipant = {
   id: string;
@@ -68,10 +69,10 @@ function toCalendarSession(session: SessionRecord): CalendarSession {
     languageId: session.language.id,
     languageName: session.language.name,
     teacherId: session.teacher.id,
-    teacherName: `${session.teacher.firstName} ${session.teacher.lastName}`,
+    teacherName: fullName(session.teacher),
     participants: session.participants.map((participant) => ({
       id: participant.id,
-      studentName: `${participant.student.firstName} ${participant.student.lastName}`,
+      studentName: fullName(participant.student),
       attendance: participant.attendance,
     })),
     isGenerated: session.scheduleSlotId !== null,
@@ -131,8 +132,8 @@ export async function getMovableSession(id: string): Promise<MovingSession | nul
     startLabel,
     durationMinutes: session.durationMinutes,
     teacherId: session.teacherId,
-    teacherName: `${session.teacher.firstName} ${session.teacher.lastName}`,
-    studentName: student ? `${student.firstName} ${student.lastName}` : "Class",
+    teacherName: fullName(session.teacher),
+    studentName: student ? fullName(student) : "Class",
     languageName: session.language.name,
   };
 }
@@ -245,14 +246,14 @@ export async function getCreateClassOptions(): Promise<{
   return {
     students: students.map((student) => ({
       id: student.id,
-      name: `${student.firstName} ${student.lastName}`,
+      name: fullName(student),
       languageId: student.languageId,
       languageName: student.language.name,
       primaryTeacherId: student.primaryTeacherId,
     })),
     teachers: teachers.map((teacher) => ({
       id: teacher.id,
-      name: `${teacher.firstName} ${teacher.lastName}`,
+      name: fullName(teacher),
       languageIds: teacher.languages.map((entry) => entry.languageId),
     })),
   };
