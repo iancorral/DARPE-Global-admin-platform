@@ -11,6 +11,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { EmptyState } from "@/components/shared/empty-state";
+import { DateField } from "@/components/shared/date-field";
 import { StartTimeSelect } from "@/features/sessions/components/start-time-select";
 import { WEEKDAYS } from "@/features/schedules/schemas";
 import { createGroupScheduleSlot, deactivateGroupScheduleSlot } from "../actions";
@@ -203,11 +204,10 @@ export function GroupSchedule({
 
             <div className="space-y-2">
               <Label htmlFor="group-starts-on">Starts on</Label>
-              <Input
+              <DateField
                 id="group-starts-on"
-                type="date"
                 value={startsOn}
-                onChange={(event) => setStartsOn(event.target.value)}
+                onChange={setStartsOn}
               />
             </div>
 
@@ -215,11 +215,13 @@ export function GroupSchedule({
               <Label htmlFor="group-ends-on">
                 Ends on <span className="text-muted-foreground">(optional)</span>
               </Label>
-              <Input
+              <DateField
                 id="group-ends-on"
-                type="date"
                 value={endsOn}
-                onChange={(event) => setEndsOn(event.target.value)}
+                onChange={setEndsOn}
+                min={startsOn}
+                clearable
+                placeholder="No end date"
               />
             </div>
           </div>

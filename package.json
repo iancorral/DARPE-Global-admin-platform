@@ -15,8 +15,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "import:registro": "tsx scripts/import-registro.ts",
     "demo:remove": "tsx scripts/remove-demo-data.ts",
-    "cleanup:manual": "tsx scripts/keep-only-imported.ts",
-    "import:teacher-languages": "tsx scripts/backfill-teacher-languages.ts"
+    "shots": "tsx scripts/screenshots.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
@@ -53,6 +52,7 @@
     "dotenv": "^17.4.2",
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
+    "playwright": "^1.62.1",
     "prisma": "^7.9.0",
     "tailwindcss": "^4",
     "tsx": "^4.23.1",

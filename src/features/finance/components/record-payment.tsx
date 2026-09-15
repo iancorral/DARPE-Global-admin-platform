@@ -5,20 +5,31 @@ import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader,
+  DialogTitle, DialogTrigger,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { DateField } from "@/components/shared/date-field";
 import { CURRENCIES, PAYMENT_METHODS, PAYMENT_METHOD_LABELS } from "../money";
 import { recordPayment } from "../actions";
 
 /**
  * Records money that has arrived.
  *
- * There is nothing to reconcile against — DARPE counts revenue when the money
- * lands, and what a student was expected to pay is not modelled — so this is
- * simply a note of a fact: who, how much, how, and when.
+ * A note of a fact — who, how much, how, and when — and the only thing the
+ * revenue figures are built from. Marking a student "Paid" in the list says
+ * their course is settled; this says a specific amount landed on a specific
+ * day, which is what a month's income adds up from. The two are different
+ * questions and both are worth answering.
+ *
+ * A dialog, not an inline panel. It used to expand in place inside the page
+ * header's action slot, which pushed the title around and left the form
+ * floating in the top corner.
  */
 export function RecordPayment({
   students,
@@ -65,16 +76,22 @@ export function RecordPayment({
     }
   }
 
-  if (!isOpen) {
-    return (
-      <Button onClick={() => setIsOpen(true)}>
-        <Plus className="size-4" /> Record payment
-      </Button>
-    );
-  }
-
   return (
-    <div className="w-full space-y-4 rounded-xl border bg-card p-5 shadow-xs">
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <DialogTrigger render={<Button />}>
+        <Plus className="size-4" /> Record payment
+      </DialogTrigger>
+
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Record a payment</DialogTitle>
+          <DialogDescription>
+            Money that has actually arrived. This is what the revenue figures are built
+            from.
+          </DialogDescription>
+        </DialogHeader>
+
+        <DialogBody>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2 sm:col-span-2">
           <Label htmlFor="payment-student">Student</Label>
@@ -152,11 +169,10 @@ export function RecordPayment({
 
         <div className="space-y-2">
           <Label htmlFor="payment-date">Received on</Label>
-          <Input
+          <DateField
             id="payment-date"
-            type="date"
             value={receivedOn}
-            onChange={(event) => setReceivedOn(event.target.value)}
+            onChange={setReceivedOn}
           />
           <p className="text-xs text-muted-foreground">
             The month this counts towards.
@@ -175,14 +191,17 @@ export function RecordPayment({
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-3">
-        <Button onClick={handleSave} disabled={isSaving || !studentId || !amount}>
-          {isSaving ? "Saving..." : "Record payment"}
-        </Button>
-        <Button variant="outline" onClick={() => setIsOpen(false)} disabled={isSaving}>
-          Cancel
-        </Button>
-      </div>
-    </div>
+        </DialogBody>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setIsOpen(false)} disabled={isSaving}>
+            Cancel
+          </Button>
+          <Button onClick={handleSave} disabled={isSaving || !studentId || !amount}>
+            {isSaving ? "Saving..." : "Record payment"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

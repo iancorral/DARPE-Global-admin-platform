@@ -28,42 +28,57 @@
    * a dark plum dot next to dark plum text has nothing to say. Markers carry
    * no text, so they can be vivid; text stays on `fg`.
    */
-  --color-tone-violet: #f0e8ff;
+  --color-tone-violet: #e9dcfe;
   --color-tone-violet-solid: #7c3aed;
   --color-tone-violet-fg: #4c1d95;
   --color-tone-violet-line: #c4b5fd;
 
-  --color-tone-blue: #e6efff;
+  --color-tone-blue: #dbe7ff;
   --color-tone-blue-solid: #2563eb;
   --color-tone-blue-fg: #1e40af;
   --color-tone-blue-line: #a5c4fb;
 
-  --color-tone-teal: #ddf4ec;
+  --color-tone-teal: #cdefe2;
   --color-tone-teal-solid: #0d9488;
   --color-tone-teal-fg: #0f5f4e;
   --color-tone-teal-line: #8fd3c2;
 
-  --color-tone-amber: #fdeecf;
+  --color-tone-amber: #fce7bd;
   --color-tone-amber-solid: #d97706;
   --color-tone-amber-fg: #8a4d08;
   --color-tone-amber-line: #edc27a;
 
-  --color-tone-rose: #fde6ee;
+  --color-tone-rose: #fcd9e5;
   --color-tone-rose-solid: #e11d63;
   --color-tone-rose-fg: #9c1f4c;
   --color-tone-rose-line: #f5a8c4;
 
-  --color-tone-cyan: #ddf0f9;
+  --color-tone-cyan: #cce9f7;
   --color-tone-cyan-solid: #0891b2;
   --color-tone-cyan-fg: #0d5871;
   --color-tone-cyan-line: #8ccbe2;
 
-  --color-tone-moss: #e7f2d9;
+  --color-tone-moss: #ddedc8;
   --color-tone-moss-solid: #5b8c1f;
   --color-tone-moss-fg: #3f6212;
   --color-tone-moss-line: #b3d183;
 
-  --color-tone-plum: #f2e9f2;
+  --color-tone-clay: #fadbcd;
+  --color-tone-clay-solid: #c2410c;
+  --color-tone-clay-fg: #7c2d12;
+  --color-tone-clay-line: #eeb69c;
+
+  --color-tone-indigo: #dcdcf9;
+  --color-tone-indigo-solid: #4f46e5;
+  --color-tone-indigo-fg: #312e81;
+  --color-tone-indigo-line: #b0b0f0;
+
+  --color-tone-slate: #dfe1e8;
+  --color-tone-slate-solid: #475069;
+  --color-tone-slate-fg: #333b52;
+  --color-tone-slate-line: #b3b8c6;
+
+  --color-tone-plum: #ece0eb;
   --color-tone-plum-solid: #8b5e86;
   --color-tone-plum-fg: #64405f;
   --color-tone-plum-line: #d3bcd0;
@@ -83,12 +98,19 @@
   }
 }
 
+/*
+ * A reveal, not a dash. Animating `stroke-dashoffset` needs a dash sized to the
+ * path, and on a `non-scaling-stroke` Safari measures that dash in screen pixels
+ * rather than path units: the dash came out shorter than the line and the
+ * finished chart had a visible break in it. Clipping the plot open from the left
+ * looks the same and has nothing to measure.
+ */
 @keyframes darpe-draw-line {
   from {
-    stroke-dashoffset: var(--darpe-line-length, 1000);
+    clip-path: inset(0 100% 0 0);
   }
   to {
-    stroke-dashoffset: 0;
+    clip-path: inset(0 0 0 0);
   }
 }
 
@@ -173,29 +195,35 @@
    * Deep violet is accessible but reads as institutional — the product looked
    * like office software. `#7C3AED` is the brand's own brighter violet and
    * still passes comfortably: white on it is 5.7:1, and as text on the warm
-   * background it is 5.3:1, both past AA. `#5B21B6` carries text on the pale
+   * background it is 4.59:1, both past AA. `#5B21B6` carries text on the pale
    * lavender tints, where a lighter violet would not hold up.
    *
    * Mauve (4.2:1) and lavender gray (2.6:1) still never carry words: lavender
    * gray tints borders, mauve is decorative only.
+   *
+   * The ground lightens the brand's pale lavender to `#EEE3F4`, keeping primary
+   * text above 4.5:1 without changing the accent. It is not a white with
+   * a rumour of violet in it. Cards stay pure white, so every panel lifts off
+   * the page instead of dissolving into it — the earlier near-white ground made
+   * the whole product read as a document. Navigation has a lighter lavender tint.
    */
-  --background: #faf7fc;
-  --foreground: #2a2137;
+  --background: #eee3f4;
+  --foreground: #241c30;
   --card: #ffffff;
-  --card-foreground: #2a2137;
+  --card-foreground: #241c30;
   --popover: #ffffff;
-  --popover-foreground: #2a2137;
+  --popover-foreground: #241c30;
   --primary: #7c3aed;
   --primary-foreground: #ffffff;
-  --secondary: #ecdff2;
+  --secondary: #e6d7f3;
   --secondary-foreground: #5b21b6;
-  --muted: #f3ecf7;
-  --muted-foreground: #655d6e;
-  --accent: #ecdff2;
+  --muted: #ece1f6;
+  --muted-foreground: #5f5670;
+  --accent: #e6d7f3;
   --accent-foreground: #5b21b6;
   --destructive: oklch(0.577 0.245 27.325);
-  --border: #e5dbec;
-  --input: #e5dbec;
+  --border: #ddcdee;
+  --input: #ddcdee;
   --ring: #7c3aed;
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
@@ -203,13 +231,13 @@
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
   --radius: 0.625rem;
-  --sidebar: #ffffff;
+  --sidebar: #faf7fc;
   --sidebar-foreground: #2a2137;
   --sidebar-primary: #7c3aed;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #ecdff2;
+  --sidebar-accent: #e6d7f3;
   --sidebar-accent-foreground: #5b21b6;
-  --sidebar-border: #e5dbec;
+  --sidebar-border: #ddcdee;
   --sidebar-ring: #7c3aed;
 }
 
@@ -248,18 +276,98 @@
 }
 
 @layer utilities {
+  .darpe-welcome {
+    /*
+     * The greeting sits on card white like every other panel, warmed by a
+     * lavender wash that deepens toward the mascots. It used to be flat
+     * `#EEE3F4` — the exact value the page ground later became — so the banner
+     * and the page behind it were the same colour and only the border said
+     * where one ended.
+     */
+    background-image: linear-gradient(115deg, var(--card) 45%, #f2e8f8 75%, #e9dbf3 100%);
+  }
+
+  /*
+   * The login's brand panel: the same wash as the greeting, turned so it
+   * deepens toward the corner the mascots lean in from. Pale on purpose —
+   * the wordmark and the button are the violet on that screen.
+   */
+  .darpe-login-brand {
+    background-image: linear-gradient(160deg, var(--card) 30%, #f2e8f8 65%, #e6d7f3 100%);
+  }
+
   .darpe-bar-grow {
     transform-origin: bottom;
     animation: darpe-grow-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) backwards;
   }
 
   .darpe-line-draw {
-    stroke-dasharray: var(--darpe-line-length, 1000);
-    animation: darpe-draw-line 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    animation: darpe-draw-line 0.9s cubic-bezier(0.22, 1, 0.36, 1) backwards;
   }
 
   .darpe-area-fade {
     animation: darpe-fade-in 0.9s ease-out 0.3s backwards;
+  }
+}
+
+/*
+ * The mascots leaning in from behind the greeting banner.
+ *
+ * They start fully below the banner's clipped edge and slide up, overshooting
+ * a little before settling — the overshoot is what makes it read as somebody
+ * popping up rather than an image fading in. `translate3d` keeps it on the
+ * compositor, so nothing on the page relayouts while it runs.
+ */
+@keyframes darpe-mascots-peek {
+  from {
+    transform: translate3d(0, 100%, 0);
+  }
+  70% {
+    transform: translate3d(0, -6%, 0);
+  }
+  to {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+/*
+ * A slow breath, for the login screen only.
+ *
+ * Nobody is working on that screen, so a loop that would be a distraction
+ * beside a table is harmless there: the pair drifts up a few pixels and back
+ * over four seconds, starting after the peek has landed. Starts and ends at
+ * rest so it hands over cleanly from the entrance.
+ */
+@keyframes darpe-mascots-float {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -4%, 0);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .darpe-mascots {
+    animation: darpe-mascots-peek 620ms cubic-bezier(0.34, 1.4, 0.64, 1) 180ms backwards;
+    will-change: transform;
+  }
+
+  .darpe-mascots-float {
+    animation:
+      darpe-mascots-peek 620ms cubic-bezier(0.34, 1.4, 0.64, 1) 180ms backwards,
+      darpe-mascots-float 4s ease-in-out 1.2s infinite;
+  }
+
+  /*
+   * They lift a touch when the banner is hovered — a small reward for
+   * noticing them, and the only interactive flourish in the product.
+   */
+  .darpe-welcome:hover .darpe-mascots,
+  .darpe-login-brand:hover .darpe-mascots {
+    transform: translate3d(0, -6%, 0);
+    transition: transform 220ms cubic-bezier(0.34, 1.3, 0.64, 1);
   }
 }
 

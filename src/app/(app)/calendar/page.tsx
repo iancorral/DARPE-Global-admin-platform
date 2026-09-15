@@ -10,6 +10,7 @@ import {
   preselectedStudentId,
 } from "@/features/sessions/calendar-return";
 import { CalendarToolbar } from "@/features/sessions/components/calendar-toolbar";
+import { WeekPager } from "@/features/sessions/components/week-pager";
 import {
   WeekCalendar,
   type CalendarDay,
@@ -134,16 +135,19 @@ export default async function CalendarPage({
      * keeps the flex bounding the mobile agenda depends on.
      */
     <div className="flex min-h-0 flex-1 flex-col p-4 lg:block lg:px-6 lg:py-6">
-      <div className="mb-4 flex shrink-0 flex-wrap items-start justify-between gap-4 lg:mb-6">
+      <div className="mb-3 flex shrink-0 flex-wrap items-center justify-between gap-3 lg:mb-4">
         <div>
           <h1 className="font-serif text-2xl font-semibold tracking-tight">Calendar</h1>
+          {/*
+            The week itself is named by the pager, between its own arrows, so it
+            is not repeated here. This line says only what the title cannot.
+          */}
           <p className="text-sm text-muted-foreground">
-            Week of {rangeLabel} · {sessions.length} sessions
+            {sessions.length} {sessions.length === 1 ? "session" : "sessions"} this week
           </p>
         </div>
         <CalendarToolbar
           weekStart={weekStart}
-          todayWeekStart={todayWeekStart}
           teacherId={teacherId}
           teachers={teachers}
           generationMonth={{
@@ -154,6 +158,18 @@ export default async function CalendarPage({
           movingSessionId={movingSession?.id}
         />
       </div>
+
+      {/*
+        Navigation spans the calendar rather than sitting in the header's
+        corner: arrows at the two ends, the week's dates centred between them.
+      */}
+      <WeekPager
+        weekStart={weekStart}
+        todayWeekStart={todayWeekStart}
+        rangeLabel={rangeLabel}
+        teacherId={teacherId}
+        movingSessionId={movingSession?.id}
+      />
 
       <WeekCalendar
         days={days}

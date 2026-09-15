@@ -65,8 +65,9 @@ export function splitPersonName(full: string): { firstName: string; lastName: st
  * - PAGADO, PENDIENTE and BENEFICIO are all people currently studying. Whether
  *   they have paid is a financial fact DARPE does not model yet, and it must
  *   not be smuggled in as a student status.
- * - INACTIVO is somebody who has stopped, which is PAUSED rather than ARCHIVED:
- *   archiving is the more final step and staff should choose it themselves.
+ * - INACTIVO is somebody who has stopped, which is ARCHIVED. Ian decided this on
+ *   2026-09-14: the register has no notion of a temporary pause, and inactive
+ *   students left in the default lists read as people still studying.
  *
  * Anything unrecognised returns null so the row is reported, never defaulted.
  */
@@ -77,7 +78,7 @@ export function studentStatusFromEstado(estado: string): StudentStatus | null {
     case "beneficio":
       return "ACTIVE";
     case "inactivo":
-      return "PAUSED";
+      return "ARCHIVED";
     default:
       return null;
   }

@@ -1,48 +1,70 @@
 import { describe, expect, it } from "vitest";
 import { TONES, TONE_CLASSES, avatarTone, initialsOf, languageTone } from "./tone";
 
+/** Every language DARPE teaches, in English and in Spanish. */
+const ACADEMY = [
+  ["English", "Inglés"],
+  ["Spanish", "Español"],
+  ["French", "Francés"],
+  ["Italian", "Italiano"],
+  ["German", "Alemán"],
+  ["Japanese", "Japonés"],
+  ["Chinese", "Chino"],
+  ["Korean", "Coreano"],
+  ["Swedish", "Sueco"],
+] as const;
+
 describe("languageTone", () => {
-  it("gives each of DARPE's seven languages its own tone", () => {
-    const tones = [
-      languageTone({ name: "English" }),
-      languageTone({ name: "Spanish" }),
-      languageTone({ name: "French" }),
-      languageTone({ name: "Italian" }),
-      languageTone({ name: "Japanese" }),
-      languageTone({ name: "German" }),
-      languageTone({ name: "Swedish" }),
-    ];
+  /*
+   * These assert the rules rather than the palette. Which colour Spanish gets
+   * is a design decision that may change; that no two languages share one, and
+   * that none of them takes DARPE's own violet, are what the feature depends
+   * on — those are worth failing a build over.
+   */
+  it("gives each of DARPE's nine languages its own tone", () => {
+    const tones = ACADEMY.map(([name]) => languageTone({ name }));
 
-    expect(tones).toEqual(["violet", "teal", "blue", "amber", "rose", "cyan", "moss"]);
-    // No two of the academy's languages may share a colour.
-    expect(new Set(tones).size).toBe(7);
-  });
-
-  it("recognises the Swedish language by code and by either spelling", () => {
-    expect(languageTone({ name: "Anything", code: "sv" })).toBe("moss");
-    expect(languageTone({ name: "Sueco" })).toBe("moss");
-    expect(languageTone({ name: "Svenska" })).toBe("moss");
+    expect(new Set(tones).size).toBe(ACADEMY.length);
   });
 
   it("keeps plum free to mean 'not one of ours'", () => {
-    const academy = ["English", "Spanish", "French", "Italian", "Japanese", "German", "Swedish"];
+    expect(ACADEMY.map(([name]) => languageTone({ name }))).not.toContain("plum");
+    expect(languageTone({ name: "Portuguese" })).toBe("plum");
+  });
 
-    expect(academy.map((name) => languageTone({ name }))).not.toContain("plum");
+  it("leaves violet to the brand, so no language competes with the interface", () => {
+    expect(ACADEMY.map(([name]) => languageTone({ name }))).not.toContain("violet");
+  });
+
+  it("gives a language the same tone in either spelling", () => {
+    for (const [english, spanish] of ACADEMY) {
+      expect(languageTone({ name: spanish })).toBe(languageTone({ name: english }));
+    }
+  });
+
+  it("takes its cue from the flag where two languages would not collide", () => {
+    // Spanish gold, Japanese crimson, Italian green: the documented anchors.
+    expect(languageTone({ name: "Spanish" })).toBe("amber");
+    expect(languageTone({ name: "Japanese" })).toBe("rose");
+    expect(languageTone({ name: "Italian" })).toBe("moss");
+  });
+
+  it("recognises a language by code and by either spelling", () => {
+    expect(languageTone({ name: "Anything", code: "sv" })).toBe("cyan");
+    expect(languageTone({ name: "Sueco" })).toBe("cyan");
+    expect(languageTone({ name: "Svenska" })).toBe("cyan");
   });
 
   it("ignores case and surrounding whitespace", () => {
-    expect(languageTone({ name: "  ENGLISH " })).toBe("violet");
-    expect(languageTone({ name: "spanish" })).toBe("teal");
-  });
-
-  it("accepts the Spanish spelling of a language", () => {
-    expect(languageTone({ name: "Español" })).toBe("teal");
-    expect(languageTone({ name: "Francés" })).toBe("blue");
+    expect(languageTone({ name: "  ENGLISH " })).toBe(languageTone({ name: "English" }));
+    expect(languageTone({ name: "spanish" })).toBe("amber");
   });
 
   it("prefers the stored code, so renaming a language keeps its colour", () => {
-    expect(languageTone({ name: "English (business)", code: "en" })).toBe("violet");
-    expect(languageTone({ name: "Anything", code: "DE" })).toBe("cyan");
+    expect(languageTone({ name: "English (business)", code: "en" })).toBe(
+      languageTone({ name: "English" })
+    );
+    expect(languageTone({ name: "Anything", code: "DE" })).toBe("slate");
   });
 
   it("falls back to the name when the code is unknown or absent", () => {

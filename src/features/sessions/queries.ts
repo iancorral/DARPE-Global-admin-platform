@@ -24,6 +24,8 @@ export type CalendarSession = {
   languageName: string;
   teacherId: string;
   teacherName: string;
+  /** The group's name for a group class — what staff call it. Null for one student. */
+  groupName: string | null;
   participants: SessionParticipant[];
   isGenerated: boolean;
   /**
@@ -45,6 +47,7 @@ function findWeekSessions(start: Date, end: Date, teacherId?: string) {
     include: {
       teacher: { select: { id: true, firstName: true, lastName: true } },
       language: { select: { id: true, name: true } },
+      group: { select: { name: true } },
       participants: {
         include: { student: { select: { id: true, firstName: true, lastName: true } } },
       },
@@ -70,6 +73,7 @@ function toCalendarSession(session: SessionRecord): CalendarSession {
     languageName: session.language.name,
     teacherId: session.teacher.id,
     teacherName: fullName(session.teacher),
+    groupName: session.group?.name ?? null,
     participants: session.participants.map((participant) => ({
       id: participant.id,
       studentName: fullName(participant.student),
@@ -111,6 +115,7 @@ export async function getMovableSession(id: string): Promise<MovingSession | nul
       teacherId: true,
       teacher: { select: { firstName: true, lastName: true } },
       language: { select: { name: true } },
+      group: { select: { name: true } },
       participants: {
         select: { student: { select: { firstName: true, lastName: true } } },
       },
@@ -133,7 +138,8 @@ export async function getMovableSession(id: string): Promise<MovingSession | nul
     durationMinutes: session.durationMinutes,
     teacherId: session.teacherId,
     teacherName: fullName(session.teacher),
-    studentName: student ? fullName(student) : "Class",
+    // What the move banner calls the class: the group's name for a group class.
+    studentName: session.group?.name ?? (student ? fullName(student) : "Class"),
     languageName: session.language.name,
   };
 }

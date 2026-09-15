@@ -1,31 +1,40 @@
-import { getFinanceOverview, getPayableStudents, getPayments, getTeacherPeriods } from "@/features/finance/queries";
+import {
+  getFinanceOverview,
+  getPayableStudents,
+  getStudentBilling,
+  getTeacherPeriods,
+} from "@/features/finance/queries";
 import { RecordPayment } from "@/features/finance/components/record-payment";
 import { PayoutsPanel } from "@/features/finance/components/payouts-panel";
-import { formatAmount, PAYMENT_METHOD_LABELS } from "@/features/finance/money";
-import { EmptyState } from "@/components/shared/empty-state";
-import { InitialsAvatar } from "@/components/shared/identity";
-import { PageContainer, PageHeader, Section } from "@/components/shared/page";
-import { Badge } from "@/components/ui/badge";
+import { StudentBillingTable } from "@/features/finance/components/student-billing-table";
 import { MigrationPending } from "@/features/finance/components/migration-pending";
+import { EmptyState } from "@/components/shared/empty-state";
+import { PageContainer, PageHeader } from "@/components/shared/page";
+import { TabSwitch } from "@/components/shared/tab-switch";
 import { DEFAULT_TIMEZONE, todayInZone } from "@/lib/datetime";
 import { isMissingTable } from "@/lib/db-errors";
 
+/**
+ * Money in from students, money out to teachers — one list each.
+ *
+ * Deliberately not a ledger of individual payments: what a student pays is
+ * inferred from the plan they are on, so the useful view is "who is on what and
+ * have they paid", not a receipt per transaction. Recording an actual payment
+ * is still here as an action; the history of them lives on the finance screen.
+ */
 export default async function PaymentsPage() {
   const today = todayInZone(DEFAULT_TIMEZONE);
 
   let overview: Awaited<ReturnType<typeof getFinanceOverview>>;
-  let payments: Awaited<ReturnType<typeof getPayments>>;
   let students: Awaited<ReturnType<typeof getPayableStudents>>;
+  let billing: Awaited<ReturnType<typeof getStudentBilling>>;
   let periods: Awaited<ReturnType<typeof getTeacherPeriods>>;
 
   try {
     overview = await getFinanceOverview();
-    [payments, students, periods] = await Promise.all([
-      getPayments(
-        new Date(`${overview.monthStartDate}T00:00:00Z`),
-        new Date(`${overview.monthEndDate}T00:00:00Z`)
-      ),
+    [students, billing, periods] = await Promise.all([
       getPayableStudents(),
+      getStudentBilling(),
       // The academy month is the settlement period until DARPE settles on
       // fortnights or something else.
       getTeacherPeriods(overview.monthStartDate, overview.monthEndDate),
@@ -35,66 +44,47 @@ export default async function PaymentsPage() {
     return <MigrationPending title="Payments" />;
   }
 
+  const unpaid = billing.filter(
+    (row) => row.status === "ACTIVE" && row.billing === "PENDING"
+  ).length;
+  const owedCount = periods.filter((period) => period.payout && !period.payout.paidOn).length;
+
   return (
     <PageContainer>
       <PageHeader
         title="Payments"
-        description={`Money in from students, money out to teachers · ${overview.monthLabel}`}
+        description={`Money in from students · money out to teachers · ${overview.monthLabel}`}
+        actions={<RecordPayment students={students} defaultDate={today} />}
       />
 
-      <div className="space-y-8">
-        <Section
-          title="Payments received"
-          description={`${payments.length} this month`}
-          actions={<RecordPayment students={students} defaultDate={today} />}
-        >
-          {payments.length === 0 ? (
-            <EmptyState>
-              No payments recorded this month. Record one as the money arrives — that is
-              what the revenue figures are built from.
-            </EmptyState>
-          ) : (
-            <ul className="divide-y overflow-hidden rounded-xl border bg-card shadow-xs">
-              {payments.map((payment) => (
-                <li key={payment.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
-                  <InitialsAvatar name={payment.studentName} />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium">
-                      {payment.studentName}
-                    </span>
-                    <span className="block truncate text-xs text-muted-foreground">
-                      {payment.receivedOn}
-                      {payment.notes ? ` · ${payment.notes}` : ""}
-                    </span>
-                  </span>
-                  <Badge variant="secondary">
-                    {PAYMENT_METHOD_LABELS[payment.method]}
-                  </Badge>
-                  <span className="text-sm font-medium tabular-nums">
-                    {formatAmount(payment.amountCents, payment.currency)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Section>
-
-        <Section
-          title="Teacher payouts"
-          description="Hours come from completed classes; the amount is entered by hand"
-        >
-          {periods.length === 0 ? (
-            <EmptyState>No active teachers yet.</EmptyState>
-          ) : (
-            <PayoutsPanel
-              periods={periods}
-              periodStart={overview.monthStartDate}
-              periodEnd={overview.monthEndDate}
-              today={today}
-            />
-          )}
-        </Section>
-      </div>
+      <TabSwitch
+        label="Payments view"
+        tabs={[
+          {
+            id: "students",
+            label: "Students",
+            count: unpaid || undefined,
+            content: <StudentBillingTable rows={billing} />,
+          },
+          {
+            id: "payouts",
+            label: "Teacher payouts",
+            count: owedCount || undefined,
+            content:
+              periods.length === 0 ? (
+                <EmptyState>No active teachers yet.</EmptyState>
+              ) : (
+                <PayoutsPanel
+                  periods={periods}
+                  periodStart={overview.monthStartDate}
+                  periodEnd={overview.monthEndDate}
+                  periodLabel={overview.monthLabel}
+                  today={today}
+                />
+              ),
+          },
+        ]}
+      />
     </PageContainer>
   );
 }

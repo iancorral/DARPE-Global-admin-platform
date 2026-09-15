@@ -21,6 +21,14 @@ if (devOrigins.rejected.length > 0) {
 
 const nextConfig: NextConfig = {
   ...(devOrigins.allowed.length > 0 && { allowedDevOrigins: devOrigins.allowed }),
+
+  /*
+   * Next's floating dev badge sits over the bottom-left corner, which is where
+   * the sidebar keeps the signed-in name and the sign-out button. It covered
+   * both, and it appears in every screenshot taken of a dev build. Build output
+   * is unaffected — the badge only ever existed in `next dev`.
+   */
+  devIndicators: false,
 };
 
 export default nextConfig;

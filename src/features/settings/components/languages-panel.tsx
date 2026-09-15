@@ -145,8 +145,7 @@ export function LanguagesPanel({ languages }: { languages: LanguageRow[] }) {
                 onChange={(event) => setCode(event.target.value)}
               />
               <p className="text-xs text-muted-foreground">
-                Two to five letters, set once. It is what keeps the language&apos;s colour
-                and its seed entry pointing at the same record.
+                A short code such as pt. It can&apos;t be changed later.
               </p>
             </div>
           </div>

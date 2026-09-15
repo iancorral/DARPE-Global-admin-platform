@@ -63,15 +63,6 @@ export function RevenueChart({
     .join(" ");
   const area = `${line} L${plotted[lastIndex]?.x ?? 0},100 L${plotted[0]?.x ?? 0},100 Z`;
 
-  // Rough path length for the draw-in; it only has to be at least as long as
-  // the path, and measuring the real one would mean a DOM read after mount.
-  const lineLength = plotted.reduce((total, entry, index) => {
-    const previous = plotted[index - 1];
-    return previous
-      ? total + Math.hypot(entry.x - previous.x, entry.y - previous.y)
-      : total;
-  }, 0);
-
   /** The month whose point is closest to where the pointer is. */
   function trackPointer(event: MouseEvent<HTMLDivElement>) {
     const rect = plotRef.current?.getBoundingClientRect();
@@ -106,7 +97,11 @@ export function RevenueChart({
           viewBox="0 0 100 100"
           preserveAspectRatio="none"
           aria-hidden="true"
-          className="absolute inset-0 size-full"
+          // The draw-in is a left-to-right reveal of the whole plot. It used to
+          // run a dash along the line and leave the dash in place, and Safari
+          // sizes the dashes of a non-scaling stroke in screen pixels — so on an
+          // iPhone the finished line had a gap in it.
+          className="darpe-line-draw absolute inset-0 size-full"
         >
           <defs>
             <linearGradient id={`${tooltipId}-fill`} x1="0" y1="0" x2="0" y2="1">
@@ -118,12 +113,11 @@ export function RevenueChart({
           <path
             d={line}
             fill="none"
-            className="darpe-line-draw stroke-tone-violet-solid"
+            className="stroke-tone-violet-solid"
             strokeWidth={2.5}
             strokeLinejoin="round"
             strokeLinecap="round"
             vectorEffect="non-scaling-stroke"
-            style={{ ["--darpe-line-length" as string]: lineLength }}
           />
         </svg>
 

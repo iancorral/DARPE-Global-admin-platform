@@ -19,18 +19,6 @@ export const groupFormSchema = z.object({
 
 export type GroupFormInput = z.infer<typeof groupFormSchema>;
 
-/**
- * An edit carries the active flag as well: closing a group is an ordinary edit,
- * not a separate action. An inactive group keeps every class it already
- * produced and simply stops producing new ones.
- */
-export const updateGroupSchema = groupFormSchema.extend({
-  id: z.string().min(1),
-  active: z.boolean(),
-});
-
-export type UpdateGroupInput = z.infer<typeof updateGroupSchema>;
-
 export const groupMemberSchema = z.object({
   groupId: z.string().min(1),
   studentId: z.string("Select a student").min(1, "Select a student"),

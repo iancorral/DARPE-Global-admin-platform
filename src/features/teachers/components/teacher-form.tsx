@@ -1,65 +1,80 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
 import {
   Form, FormControl, FormField, FormItem, FormLabel, FormMessage,
 } from "@/components/ui/form";
-import { FormActions, FormCard, FormSection } from "@/components/shared/page";
-import { createTeacher, updateTeacher } from "../actions";
+import { AtSign, Languages, UserRound } from "lucide-react";
+import { FormActions, FormCard, FormLayout, FormSection } from "@/components/shared/page";
+import {
+  SimilarRecords,
+  SimilarRecordsInline,
+} from "@/features/directory/components/similar-records";
+import type { DirectoryEntry } from "@/features/directory/similar";
+import { createTeacher } from "../actions";
 import { teacherFormSchema, type TeacherFormInput } from "../schemas";
 
 type LanguageOption = { id: string; name: string };
 
 type Props = {
   languages: LanguageOption[];
-  /**
-   * When present, the form edits this teacher instead of creating one. Only an
-   * edit offers the active flag: a teacher is always created active.
-   */
-  teacher?: { id: string; active: boolean } & TeacherFormInput;
+  /** Every teacher on record, newest first, to catch a duplicate while typing. */
+  existing: DirectoryEntry[];
 };
 
-export function TeacherForm({ languages, teacher }: Props) {
+/**
+ * Creating a teacher. Editing one happens on their own page, field by field —
+ * see `inline-field.tsx`. A teacher is always created active.
+ */
+export function TeacherForm({ languages, existing }: Props) {
   const router = useRouter();
-
-  // Outside the form state on purpose: it needs no validation, and the create
-  // schema knows nothing about it.
-  const [active, setActive] = useState(teacher?.active ?? true);
 
   const form = useForm<TeacherFormInput>({
     resolver: zodResolver(teacherFormSchema),
-    defaultValues: teacher ?? {
+    defaultValues: {
       firstName: "", lastName: "", email: "", phone: "", languageIds: [],
     },
   });
 
+  const [firstName, lastName] = useWatch({
+    control: form.control,
+    name: ["firstName", "lastName"],
+  });
+  const nameQuery = `${firstName ?? ""} ${lastName ?? ""}`;
+
   async function onSubmit(values: TeacherFormInput) {
-    const result = teacher
-      ? await updateTeacher({ id: teacher.id, active, ...values })
-      : await createTeacher(values);
+    const result = await createTeacher(values);
 
     if (!result.success) {
       toast.error(result.error);
       return;
     }
 
-    toast.success(teacher ? "Teacher updated" : "Teacher created");
+    toast.success("Teacher created");
     router.push("/teachers");
   }
 
   return (
+    <FormLayout
+      aside={
+        <SimilarRecords
+          query={nameQuery}
+          entries={existing}
+          noun={{ singular: "teacher", plural: "teachers" }}
+          className="hidden lg:block"
+        />
+      }
+    >
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)}>
         <FormCard>
-        <FormSection title="Who they are" description="The name staff will search for.">
+        <FormSection title="Who they are" icon={UserRound} tone="violet">
         <div className="grid gap-4 sm:grid-cols-2">
           <FormField
             control={form.control}
@@ -84,11 +99,13 @@ export function TeacherForm({ languages, teacher }: Props) {
             )}
           />
         </div>
+        <SimilarRecordsInline query={nameQuery} entries={existing} className="lg:hidden" />
         </FormSection>
 
         <FormSection
           title="Contact"
-          description="Optional. Teachers have no account — this is for staff to reach them."
+          icon={AtSign}
+          tone="blue"
         >
         <FormField
           control={form.control}
@@ -118,14 +135,15 @@ export function TeacherForm({ languages, teacher }: Props) {
 
         <FormSection
           title="Languages taught"
-          description="Only these languages can be scheduled with this teacher."
+          icon={Languages}
+          tone="teal"
         >
         <FormField
           control={form.control}
           name="languageIds"
           render={() => (
             <FormItem>
-              <FormLabel>Languages taught</FormLabel>
+              {/* No label: the section heading above already says this. */}
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {languages.map((language) => (
                   <FormField
@@ -159,34 +177,11 @@ export function TeacherForm({ languages, teacher }: Props) {
 
         </FormSection>
 
-        {teacher && (
-          <FormSection title="Availability" description="Whether new classes can be booked.">
-          <div className="space-y-2 rounded-md border p-4">
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="teacher-active"
-                checked={active}
-                onCheckedChange={(checked) => setActive(checked === true)}
-              />
-              <Label htmlFor="teacher-active" className="font-normal">
-                Active
-              </Label>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Inactive teachers cannot be given new classes and stop appearing when
-              scheduling. Classes they already have are kept.
-            </p>
-          </div>
-          </FormSection>
-        )}
+
 
         <FormActions>
           <Button type="submit" disabled={form.formState.isSubmitting}>
-            {form.formState.isSubmitting
-              ? "Saving..."
-              : teacher
-                ? "Save changes"
-                : "Create teacher"}
+            {form.formState.isSubmitting ? "Saving..." : "Create teacher"}
           </Button>
           <Button type="button" variant="outline" onClick={() => router.back()}>
             Cancel
@@ -195,5 +190,6 @@ export function TeacherForm({ languages, teacher }: Props) {
         </FormCard>
       </form>
     </Form>
+    </FormLayout>
   );
 }

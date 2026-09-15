@@ -17,16 +17,17 @@ import { matchesSearch } from "@/lib/search";
 import type { TeacherListRow } from "../queries";
 
 /**
- * Active teachers are the working set, so they are the default view; inactive
+ * Active teachers are the working set, so they are the default view; archived
  * ones remain reachable here because this list is the only place a teacher can
- * be found again and reactivated. Filtering happens on the client: the rows
- * are already loaded, and names stay out of the URL.
+ * be found again and brought back. "Archived" rather than "Inactive" so teachers
+ * and students use the same word for somebody who has left. Filtering happens
+ * on the client: the rows are already loaded, and names stay out of the URL.
  */
-type ActiveFilter = "ACTIVE" | "INACTIVE" | "ALL";
+type ActiveFilter = "ACTIVE" | "ARCHIVED" | "ALL";
 
 const FILTER_OPTIONS: { value: ActiveFilter; label: string }[] = [
   { value: "ACTIVE", label: "Active" },
-  { value: "INACTIVE", label: "Inactive" },
+  { value: "ARCHIVED", label: "Archived" },
   { value: "ALL", label: "All" },
 ];
 
@@ -122,7 +123,7 @@ export function TeachersTable({ teachers }: { teachers: TeacherListRow[] }) {
                     </p>
                   </div>
                   <Badge variant={teacher.active ? "default" : "outline"}>
-                    {teacher.active ? "Active" : "Inactive"}
+                    {teacher.active ? "Active" : "Archived"}
                   </Badge>
                 </div>
 

@@ -6,7 +6,7 @@ import type { ClassStatus, ClassType, StudentStatus } from "@/generated/prisma/c
  * Paused and archived students keep the classes they already have — this rule
  * only governs creating new ones, never editing history.
  */
-export const ELIGIBLE_STUDENT_STATUSES: StudentStatus[] = ["ACTIVE", "TRIAL"];
+export const ELIGIBLE_STUDENT_STATUSES: StudentStatus[] = ["ACTIVE"];
 
 export function isEligibleStudent(status: StudentStatus): boolean {
   return ELIGIBLE_STUDENT_STATUSES.includes(status);

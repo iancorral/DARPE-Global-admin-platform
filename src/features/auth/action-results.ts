@@ -8,3 +8,6 @@
  */
 
 export type ActionState = { error: string } | null;
+
+/** What changing a password reports back. */
+export type PasswordResult = { success: true } | { success: false; error: string };

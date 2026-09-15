@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Check, Plus } from "lucide-react";
+import { Check, Plus, UsersRound } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { TONE_CLASSES, languageTone } from "@/lib/tone";
@@ -21,6 +21,7 @@ import {
   sessionCardId,
 } from "../element-ids";
 import type { DestinationSlot } from "./move-destinations";
+import { groupSizeLabel, sessionTitle } from "../session-title";
 import type { CalendarSession, MovingSession } from "../queries";
 import type { CalendarDay } from "./calendar-day";
 
@@ -309,8 +310,8 @@ function SessionCard({
   const isCancelled = session.status === "CANCELLED";
   const isCompleted = session.status === "COMPLETED";
   const tone = TONE_CLASSES[languageTone({ name: session.languageName })];
-  const students =
-    session.participants.map((participant) => participant.studentName).join(", ") || "Class";
+  const title = sessionTitle(session);
+  const groupSize = groupSizeLabel(session);
 
   return (
     <button
@@ -341,7 +342,10 @@ function SessionCard({
           )}
         >
           {isCompleted && <Check className="size-3.5 shrink-0" aria-hidden="true" />}
-          <span className="truncate">{students}</span>
+          {!isCompleted && session.groupName && (
+            <UsersRound className="size-3.5 shrink-0" aria-hidden="true" />
+          )}
+          <span className="truncate">{title}</span>
         </span>
         {isCancelled && <Badge variant="outline">Cancelled</Badge>}
         {isCompleted && <Badge variant="default">Completed</Badge>}
@@ -352,6 +356,7 @@ function SessionCard({
       </p>
       <p className="text-xs text-muted-foreground">
         {session.teacherName} · {session.languageName}
+        {groupSize && ` · ${groupSize}`}
       </p>
     </button>
   );

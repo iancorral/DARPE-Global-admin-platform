@@ -66,9 +66,9 @@ describe("studentStatusFromEstado", () => {
     expect(studentStatusFromEstado("BENEFICIO")).toBe("ACTIVE");
   });
 
-  it("pauses rather than archives somebody who stopped", () => {
-    // Archiving is the more final step; staff choose it themselves.
-    expect(studentStatusFromEstado("INACTIVO")).toBe("PAUSED");
+  it("archives somebody the register marks as stopped", () => {
+    // The register has no temporary pause: INACTIVO means they have left.
+    expect(studentStatusFromEstado("INACTIVO")).toBe("ARCHIVED");
   });
 
   it("refuses an unrecognised state instead of defaulting", () => {

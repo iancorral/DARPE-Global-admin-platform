@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { isAlignedStartTime } from "./scheduling";
 
-export const DURATION_OPTIONS = [30, 45, 60, 90, 120] as const;
+/** Half-hour steps: DARPE's classes are an hour, and the rest are multiples. */
+export const DURATION_OPTIONS = [30, 60, 90, 120, 150, 180] as const;
 
 export const ALIGNED_START_MESSAGE = `Classes start on the hour or half hour. Choose a time ending in :00 or :30.`;
 

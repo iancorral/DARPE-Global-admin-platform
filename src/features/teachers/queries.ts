@@ -75,9 +75,13 @@ export type TeacherUpcomingSession = {
 export type TeacherProfileData = {
   id: string;
   name: string;
+  firstName: string;
+  lastName: string | null;
   active: boolean;
   email: string | null;
   phone: string | null;
+  notes: string | null;
+  languageIds: string[];
   languageNames: string[];
   /** Students whose primary teacher this is, minus archived ones. */
   students: { id: string; name: string; languageName: string; status: StudentStatus }[];
@@ -112,7 +116,8 @@ export async function getTeacherProfile(
         email: true,
         phone: true,
         active: true,
-        languages: { select: { language: { select: { name: true } } } },
+        notes: true,
+        languages: { select: { languageId: true, language: { select: { name: true } } } },
       },
     }),
     db.student.findMany({
@@ -167,9 +172,13 @@ export async function getTeacherProfile(
   return {
     id: teacher.id,
     name: fullName(teacher),
+    firstName: teacher.firstName,
+    lastName: teacher.lastName,
     active: teacher.active,
     email: teacher.email,
     phone: teacher.phone,
+    notes: teacher.notes,
+    languageIds: teacher.languages.map((entry) => entry.languageId),
     languageNames: teacher.languages.map((entry) => entry.language.name),
     students: students.map((student) => ({
       id: student.id,

@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,7 +10,6 @@ import {
 } from "@/components/ui/select";
 import { generateMonthlySessions } from "@/features/schedules/actions";
 import type { GenerationConflict } from "@/features/schedules/action-results";
-import { addDaysToDate } from "@/lib/datetime";
 import { calendarUrl } from "../scheduling";
 import { REQUEST_FAILED_MESSAGE } from "../request-feedback";
 import { fullName } from "@/lib/names";
@@ -20,44 +19,34 @@ const MAX_LISTED_CONFLICTS = 4;
 
 type Props = {
   weekStart: string;
-  todayWeekStart: string;
   teacherId?: string;
   teachers: { id: string; firstName: string; lastName: string | null }[];
   generationMonth: { year: number; month: number; label: string };
-  /** Carried through navigation so changing week does not drop an active move. */
+  /** Carried through navigation so changing teacher does not drop an active move. */
   movingSessionId?: string;
 };
 
 /**
- * Week navigation, the teacher filter and monthly generation.
+ * The calendar's two controls: whose classes to show, and generating the month.
  *
- * Creating a class is deliberately not here. A class needs a date and a time, and
- * the calendar is where those are chosen — a button here would only lead to a
- * second, blank date picker asking again for something the grid can answer.
+ * Moving between weeks is `WeekPager`, directly above the grid. A "Today"
+ * button and a date picker used to sit here as well; both repeated what the
+ * pager already shows, so they were removed (Ian, 2026-09-14). Getting back to
+ * this week is a link inside the pager, and it only appears once you have left.
+ *
+ * Creating a class is deliberately not here either. A class needs a date and a
+ * time, and the grid is where those are chosen.
  */
 export function CalendarToolbar({
   weekStart,
-  todayWeekStart,
   teacherId,
   teachers,
   generationMonth,
   movingSessionId,
 }: Props) {
   const router = useRouter();
-  const [isNavigating, startNavigation] = useTransition();
   const [isGenerating, setIsGenerating] = useState(false);
   const [conflicts, setConflicts] = useState<GenerationConflict[]>([]);
-
-  const isBusy = isNavigating || isGenerating;
-
-  function go(nextWeek: string, nextTeacher?: string) {
-    setConflicts([]);
-    startNavigation(() =>
-      router.push(
-        calendarUrl({ week: nextWeek, teacher: nextTeacher, moving: movingSessionId })
-      )
-    );
-  }
 
   async function handleGenerate() {
     setIsGenerating(true);
@@ -101,34 +90,6 @@ export function CalendarToolbar({
   return (
     <div className="flex flex-col gap-2 lg:items-end">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex items-center gap-1">
-          <Button
-            variant="outline"
-            size="icon"
-            aria-label="Previous week"
-            disabled={isBusy}
-            onClick={() => go(addDaysToDate(weekStart, -7), teacherId)}
-          >
-            <ChevronLeft className="size-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            aria-label="Next week"
-            disabled={isBusy}
-            onClick={() => go(addDaysToDate(weekStart, 7), teacherId)}
-          >
-            <ChevronRight className="size-4" />
-          </Button>
-          <Button
-            variant="outline"
-            disabled={isBusy || weekStart === todayWeekStart}
-            onClick={() => go(todayWeekStart, teacherId)}
-          >
-            Today
-          </Button>
-        </div>
-
         <Select
           items={[
             { label: "All teachers", value: ALL_TEACHERS },
@@ -136,9 +97,15 @@ export function CalendarToolbar({
           ]}
           value={teacherId ?? ALL_TEACHERS}
           onValueChange={(value) =>
-            value !== null && go(weekStart, value === ALL_TEACHERS ? undefined : value)
+            value !== null &&
+            router.push(
+              calendarUrl({
+                week: weekStart,
+                teacher: value === ALL_TEACHERS ? undefined : value,
+                moving: movingSessionId,
+              })
+            )
           }
-          disabled={isBusy}
         >
           <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
           <SelectContent>
@@ -151,9 +118,18 @@ export function CalendarToolbar({
           </SelectContent>
         </Select>
 
-        <Button variant="ghost" onClick={handleGenerate} disabled={isBusy}>
+        <Button variant="ghost" onClick={handleGenerate} disabled={isGenerating}>
           <RefreshCw className="size-4" />
-          {isGenerating ? "Generating..." : `Generate ${generationMonth.label}`}
+          {isGenerating ? (
+            "Generating..."
+          ) : (
+            // The month is already in the pager on a phone; spelling it out
+            // again is what pushed this button onto a line of its own.
+            <>
+              <span className="sm:hidden">Generate month</span>
+              <span className="hidden sm:inline">Generate {generationMonth.label}</span>
+            </>
+          )}
         </Button>
       </div>
 

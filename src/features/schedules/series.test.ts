@@ -378,7 +378,7 @@ describe("seriesConflictMessage", () => {
  */
 describe("who a series may be created for", () => {
   const candidate = (overrides?: {
-    studentStatus?: "ACTIVE" | "TRIAL" | "PAUSED" | "ARCHIVED";
+    studentStatus?: "ACTIVE" | "PAUSED" | "ARCHIVED";
     teacherLanguageIds?: string[];
     teacherActive?: boolean;
   }) => ({
@@ -395,11 +395,8 @@ describe("who a series may be created for", () => {
     languageName: "English",
   });
 
-  it("accepts an active or trial student with a teacher of their language", () => {
+  it("accepts an active student with a teacher of their language", () => {
     expect(checkManualClassEligibility(candidate())).toEqual({ ok: true });
-    expect(checkManualClassEligibility(candidate({ studentStatus: "TRIAL" }))).toEqual({
-      ok: true,
-    });
   });
 
   it("refuses a paused or archived student", () => {

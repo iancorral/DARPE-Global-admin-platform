@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { TONE_CLASSES, type Tone } from "@/lib/tone";
 
 /**
  * The bounded page frame every screen sits in.
@@ -80,21 +81,52 @@ export function PageHeader({
 export function FormSection({
   title,
   description,
+  icon: Icon,
+  tone = "violet",
   children,
 }: {
   title: string;
   description?: string;
+  /** A lucide icon. Names the section at a glance while scrolling. */
+  icon?: React.ComponentType<{ className?: string; "aria-hidden"?: boolean | "true" }>;
+  tone?: Tone;
   children: React.ReactNode;
 }) {
+  const toneClasses = TONE_CLASSES[tone];
+
   return (
     <section className="border-t px-5 py-6 first:border-t-0 lg:px-8">
-      <div className="mb-4 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <h2 className="font-serif text-base font-semibold">{title}</h2>
+      {/*
+        The icon indents the heading but not the fields under it, which on a
+        narrow screen read as a step nobody meant to draw. So the description
+        drops below the icon on a phone and sits beside it from `sm` up, where
+        the indent is small against the width and the alignment reads as
+        deliberate.
+      */}
+      <div className="mb-5 grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-1.5">
+        {Icon && (
+          // The one spot of colour in a form. It marks where a section starts
+          // so a long form reads as three short ones, which is the whole point.
+          <span
+            aria-hidden="true"
+            className={cn(
+              "flex size-9 shrink-0 items-center justify-center rounded-lg",
+              toneClasses.avatar
+            )}
+          >
+            <Icon className="size-4.5" aria-hidden="true" />
+          </span>
+        )}
+        <h2 className="min-w-0 font-serif text-base font-semibold leading-tight">
+          {title}
+        </h2>
         {description && (
-          <p className="text-xs text-muted-foreground">{description}</p>
+          <p className="col-span-2 text-xs text-muted-foreground sm:col-span-1 sm:col-start-2">
+            {description}
+          </p>
         )}
       </div>
-      <div className="space-y-4">{children}</div>
+      <div className="space-y-5">{children}</div>
     </section>
   );
 }
@@ -122,13 +154,14 @@ export function FormActions({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * A form beside the notes that explain it.
+ * A form beside the panel that helps fill it in.
  *
  * A form card alone left most of a wide screen empty to its right. Rather than
  * stretching the fields to fill it — which only makes a name field the width of
- * a desk — the space carries what staff would otherwise have to be told: what a
- * choice on the form actually does, and what happens once it is saved. The
- * notes stick while the form scrolls, and drop below it on a phone.
+ * a desk — that space lists the records that already exist with a similar name
+ * (`SimilarRecords`), so a duplicate is noticed before it is created. It used to
+ * hold paragraphs explaining the form, which staff neither needed nor read. The
+ * panel sticks while the form scrolls, and drops below it on a phone.
  */
 export function FormLayout({
   children,
@@ -145,36 +178,21 @@ export function FormLayout({
   );
 }
 
-/** One note in the column beside a form. */
-export function FormNote({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-xl border border-dashed bg-card/60 p-4">
-      <h3 className="text-sm font-semibold">{title}</h3>
-      <div className="mt-1.5 space-y-2 text-xs leading-relaxed text-muted-foreground">
-        {children}
-      </div>
-    </div>
-  );
-}
-
 /**
  * A titled band of content, for pages that would otherwise be a stack of
  * identical cards. The rule and the small caps heading separate sections by
  * typography rather than by drawing another box around everything.
  */
 export function Section({
+  id,
   title,
   description,
   actions,
   children,
   className,
 }: {
+  /** Anchor, for a link that points at one section of a long page. */
+  id?: string;
   title: string;
   description?: string;
   actions?: React.ReactNode;
@@ -182,7 +200,7 @@ export function Section({
   className?: string;
 }) {
   return (
-    <section className={cn("border-t pt-5", className)}>
+    <section id={id} className={cn("border-t pt-5", className)}>
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
         <div className="min-w-0">
           <h2 className="text-sm font-semibold">{title}</h2>
