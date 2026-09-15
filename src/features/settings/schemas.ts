@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { parseAmountToCents } from "@/features/finance/money";
+import { MODALITIES } from "@/features/students/schemas";
 
 /**
  * A language the academy offers.
@@ -74,3 +76,35 @@ export const teachingHoursSchema = z
   });
 
 export type TeachingHoursInput = z.infer<typeof teachingHoursSchema>;
+
+/**
+ * One list price, as typed.
+ *
+ * Amounts arrive as the text staff typed — "2999" or "2,999.00" — and become
+ * integer cents through the same parser every other money field uses, so a
+ * price can never pick up a floating-point peso. Zero is refused: a course
+ * that costs nothing is not a price, it is a billing state (BENEFIT), and that
+ * lives on the student.
+ */
+const priceAmountSchema = z
+  .string("Enter an amount")
+  .trim()
+  .min(1, "Enter an amount")
+  .transform((value, ctx) => {
+    const cents = parseAmountToCents(value);
+
+    if (cents === null || cents <= 0) {
+      ctx.addIssue({ code: "custom", message: "Enter an amount like 2999 or 2999.50" });
+      return z.NEVER;
+    }
+
+    return cents;
+  });
+
+export const updateCoursePriceSchema = z.object({
+  modality: z.enum(MODALITIES),
+  mxn: priceAmountSchema,
+  usd: priceAmountSchema,
+});
+
+export type UpdateCoursePriceInput = z.input<typeof updateCoursePriceSchema>;

@@ -17,6 +17,9 @@ export const TONES = [
   "rose",
   "cyan",
   "moss",
+  "clay",
+  "indigo",
+  "slate",
   "plum",
 ] as const;
 
@@ -28,7 +31,16 @@ export type Tone = (typeof TONES)[number];
  */
 export const TONE_CLASSES: Record<
   Tone,
-  { chip: string; surface: string; line: string; dot: string; avatar: string; bar: string }
+  {
+    chip: string;
+    surface: string;
+    line: string;
+    dot: string;
+    avatar: string;
+    bar: string;
+    /** The foreground alone, for an icon sitting on the page's own ground. */
+    text: string;
+  }
 > = {
   violet: {
     chip: "bg-tone-violet text-tone-violet-fg border-tone-violet-line",
@@ -37,6 +49,7 @@ export const TONE_CLASSES: Record<
     dot: "bg-tone-violet-solid",
     avatar: "bg-tone-violet text-tone-violet-fg",
     bar: "bg-tone-violet-solid",
+    text: "text-tone-violet-fg",
   },
   blue: {
     chip: "bg-tone-blue text-tone-blue-fg border-tone-blue-line",
@@ -45,6 +58,7 @@ export const TONE_CLASSES: Record<
     dot: "bg-tone-blue-solid",
     avatar: "bg-tone-blue text-tone-blue-fg",
     bar: "bg-tone-blue-solid",
+    text: "text-tone-blue-fg",
   },
   teal: {
     chip: "bg-tone-teal text-tone-teal-fg border-tone-teal-line",
@@ -53,6 +67,7 @@ export const TONE_CLASSES: Record<
     dot: "bg-tone-teal-solid",
     avatar: "bg-tone-teal text-tone-teal-fg",
     bar: "bg-tone-teal-solid",
+    text: "text-tone-teal-fg",
   },
   amber: {
     chip: "bg-tone-amber text-tone-amber-fg border-tone-amber-line",
@@ -61,6 +76,7 @@ export const TONE_CLASSES: Record<
     dot: "bg-tone-amber-solid",
     avatar: "bg-tone-amber text-tone-amber-fg",
     bar: "bg-tone-amber-solid",
+    text: "text-tone-amber-fg",
   },
   rose: {
     chip: "bg-tone-rose text-tone-rose-fg border-tone-rose-line",
@@ -69,6 +85,7 @@ export const TONE_CLASSES: Record<
     dot: "bg-tone-rose-solid",
     avatar: "bg-tone-rose text-tone-rose-fg",
     bar: "bg-tone-rose-solid",
+    text: "text-tone-rose-fg",
   },
   cyan: {
     chip: "bg-tone-cyan text-tone-cyan-fg border-tone-cyan-line",
@@ -77,6 +94,7 @@ export const TONE_CLASSES: Record<
     dot: "bg-tone-cyan-solid",
     avatar: "bg-tone-cyan text-tone-cyan-fg",
     bar: "bg-tone-cyan-solid",
+    text: "text-tone-cyan-fg",
   },
   moss: {
     chip: "bg-tone-moss text-tone-moss-fg border-tone-moss-line",
@@ -85,6 +103,34 @@ export const TONE_CLASSES: Record<
     dot: "bg-tone-moss-solid",
     avatar: "bg-tone-moss text-tone-moss-fg",
     bar: "bg-tone-moss-solid",
+    text: "text-tone-moss-fg",
+  },
+  clay: {
+    chip: "bg-tone-clay text-tone-clay-fg border-tone-clay-line",
+    surface: "bg-tone-clay",
+    line: "border-l-tone-clay-solid",
+    dot: "bg-tone-clay-solid",
+    avatar: "bg-tone-clay text-tone-clay-fg",
+    bar: "bg-tone-clay-solid",
+    text: "text-tone-clay-fg",
+  },
+  indigo: {
+    chip: "bg-tone-indigo text-tone-indigo-fg border-tone-indigo-line",
+    surface: "bg-tone-indigo",
+    line: "border-l-tone-indigo-solid",
+    dot: "bg-tone-indigo-solid",
+    avatar: "bg-tone-indigo text-tone-indigo-fg",
+    bar: "bg-tone-indigo-solid",
+    text: "text-tone-indigo-fg",
+  },
+  slate: {
+    chip: "bg-tone-slate text-tone-slate-fg border-tone-slate-line",
+    surface: "bg-tone-slate",
+    line: "border-l-tone-slate-solid",
+    dot: "bg-tone-slate-solid",
+    avatar: "bg-tone-slate text-tone-slate-fg",
+    bar: "bg-tone-slate-solid",
+    text: "text-tone-slate-fg",
   },
   plum: {
     chip: "bg-tone-plum text-tone-plum-fg border-tone-plum-line",
@@ -93,6 +139,7 @@ export const TONE_CLASSES: Record<
     dot: "bg-tone-plum-solid",
     avatar: "bg-tone-plum text-tone-plum-fg",
     bar: "bg-tone-plum-solid",
+    text: "text-tone-plum-fg",
   },
 };
 
@@ -106,35 +153,63 @@ function normalize(value: string): string {
 }
 
 /**
- * The seven languages DARPE teaches, each with its own tone. Plum is left
- * unassigned on purpose, so it can mean "not one of ours".
+ * The nine languages DARPE teaches, each in the colour its flag makes people
+ * think of.
+ *
+ * Colour here is a memory aid, and the strongest association most people carry
+ * for a language is its country's flag — so Spanish is the gold of Spain's,
+ * Japanese the crimson circle, Italian the green stripe. That beats an
+ * arbitrary spread, because staff learn it once and stop reading the label.
+ *
+ * Where fidelity and telling them apart pull against each other, **telling
+ * them apart wins** — the whole job of the colour is picking a row out at a
+ * glance. Four of these flags are mostly red and three are mostly blue, so:
+ *
+ * - Japanese takes crimson (the flag is a red circle and nothing else) and
+ *   Chinese takes the warmer vermilion beside it.
+ * - German goes graphite for the black in its flag rather than a fourth red.
+ * - French keeps the bright flag blue, English the navy of the Union Jack and
+ *   the US flag, Swedish the pale blue of its own, Korean the deep blue-green
+ *   half of the taegeuk.
+ *
+ * Violet is deliberately absent: it is DARPE's own colour, and a language
+ * wearing it would compete with the interface. Plum stays unassigned so it can
+ * mean "not one of ours".
  */
 const TONE_BY_LANGUAGE_CODE: Record<string, Tone> = {
-  en: "violet",
-  es: "teal",
+  es: "amber",
+  en: "indigo",
   fr: "blue",
-  it: "amber",
+  it: "moss",
+  de: "slate",
   ja: "rose",
-  de: "cyan",
-  sv: "moss",
+  zh: "clay",
+  ko: "teal",
+  sv: "cyan",
 };
 
 const TONE_BY_LANGUAGE_NAME: Record<string, Tone> = {
-  english: "violet",
-  ingles: "violet",
-  spanish: "teal",
-  espanol: "teal",
+  spanish: "amber",
+  espanol: "amber",
+  english: "indigo",
+  ingles: "indigo",
   french: "blue",
   frances: "blue",
-  italian: "amber",
-  italiano: "amber",
+  italian: "moss",
+  italiano: "moss",
+  german: "slate",
+  aleman: "slate",
+  deutsch: "slate",
   japanese: "rose",
   japones: "rose",
-  german: "cyan",
-  aleman: "cyan",
-  swedish: "moss",
-  sueco: "moss",
-  svenska: "moss",
+  chinese: "clay",
+  chino: "clay",
+  mandarin: "clay",
+  korean: "teal",
+  coreano: "teal",
+  swedish: "cyan",
+  sueco: "cyan",
+  svenska: "cyan",
 };
 
 /**

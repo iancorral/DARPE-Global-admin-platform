@@ -25,9 +25,18 @@ export const DASHBOARD_COPY = {
    * `scheduled` is what is still on the books. `dateLabel` and `monthLabel`
    * arrive already formatted for the academy timezone.
    */
-  contextLine: (dateLabel: string, monthLabel: string, completed: number, scheduled: number) =>
-    `${dateLabel} · ${completed} ${completed === 1 ? "class" : "classes"} taught in ` +
-    `${monthLabel}, ${scheduled} still scheduled.`,
+  /*
+   * The date, and what today holds. Deliberately not the month's figures: they
+   * are the four cards directly below, and saying "0 classes taught in
+   * September, 0 still scheduled" above two cards reading "Classes taught 0 /
+   * in September" and "Still scheduled 0 / in September" was the same fact
+   * three times. It also put three numbers and the month's name twice into one
+   * sentence, which is what made it hard to read at a glance.
+   */
+  contextLine: (dateLabel: string, todayCount: number) =>
+    todayCount === 0
+      ? `${dateLabel} · nothing scheduled today`
+      : `${dateLabel} · ${todayCount} ${todayCount === 1 ? "class" : "classes"} today`,
   openCalendar: "Open calendar",
 
   todayTitle: "Today at DARPE",
@@ -35,14 +44,13 @@ export const DASHBOARD_COPY = {
   todayCount: (count: number) => `${count} ${count === 1 ? "class" : "classes"}`,
 
   attentionTitle: "Needs attention",
-  attentionDescription:
-    "These classes have finished but are still marked as scheduled. Complete or cancel them so the records reflect what happened.",
-  attentionEmpty: "Nothing to resolve. Every class that has finished is completed or cancelled.",
-  attentionMore: (count: number) =>
-    `And ${count} more — open the calendar weeks above to work through them.`,
+  attentionDescription: "Finished classes still marked as scheduled",
+  attentionEmpty: "Nothing to resolve.",
+  attentionMore: (count: number) => `And ${count} more in the calendar.`,
 
   overviewActiveStudents: "Active students",
-  overviewTrialDetail: (count: number) => `+ ${count} trial`,
+  overviewPausedDetail: (count: number) =>
+    `${count} paused ${count === 1 ? "student" : "students"}`,
   overviewActiveTeachers: "Active teachers",
 
   kpiTaughtThisMonth: "Classes taught",

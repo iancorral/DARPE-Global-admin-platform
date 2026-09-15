@@ -106,10 +106,8 @@ export function TeachingHoursPanel({ hours }: { hours: BusinessHours }) {
         <p className="text-xs text-destructive">The day has to end after it starts.</p>
       )}
 
-      <p className="text-xs leading-relaxed text-muted-foreground">
-        Classes can still be booked outside these hours — the calendar simply marks
-        them as outside the normal day, which is what happens when a student is in
-        another country. Changing this never moves a class that already exists.
+      <p className="text-xs text-muted-foreground">
+        Hours outside this range are shaded on the calendar and can still be booked.
       </p>
 
       <Button onClick={handleSave} disabled={isSaving || !hasChanges || !isValid}>

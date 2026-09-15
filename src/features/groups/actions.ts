@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { Prisma } from "@/generated/prisma/client";
@@ -11,10 +12,8 @@ import { scheduleSlotSchema, type ScheduleSlotInput } from "@/features/schedules
 import {
   groupFormSchema,
   groupMemberSchema,
-  updateGroupSchema,
   type GroupFormInput,
   type GroupMemberInput,
-  type UpdateGroupInput,
 } from "./schemas";
 import { fullName } from "@/lib/names";
 
@@ -114,58 +113,6 @@ export async function createGroup(input: GroupFormInput): Promise<CreateResult> 
  * is what made them eligible to join, and silently moving the group would
  * leave people in a cohort they do not study. Empty the group first.
  */
-export async function updateGroup(input: UpdateGroupInput): Promise<ActionResult> {
-  await requireUser();
-
-  const parsed = updateGroupSchema.safeParse(input);
-  if (!parsed.success) {
-    return {
-      success: false,
-      error: firstValidationMessage(parsed.error, "Please check the form and try again."),
-    };
-  }
-
-  const { id, name, teacherId, languageId, notes, active } = parsed.data;
-
-  const current = await db.group.findUnique({
-    where: { id },
-    select: { languageId: true, _count: { select: { members: true } } },
-  });
-
-  if (!current) return { success: false, error: "That group no longer exists." };
-
-  if (current.languageId !== languageId && current._count.members > 0) {
-    return {
-      success: false,
-      error:
-        "Remove the members before changing the language — they joined because they study the current one.",
-    };
-  }
-
-  const eligible = await checkTeacherForGroup(teacherId, languageId);
-  if (!eligible.ok) return { success: false, error: eligible.error };
-
-  try {
-    await db.group.update({
-      where: { id },
-      data: { name, teacherId, languageId, notes: notes || null, active },
-    });
-  } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError) {
-      if (error.code === "P2002") {
-        return { success: false, error: "A group with that name already exists." };
-      }
-      if (error.code === "P2025") {
-        return { success: false, error: "That group no longer exists." };
-      }
-    }
-    throw error;
-  }
-
-  revalidateGroup(id);
-  return { success: true };
-}
-
 /**
  * Adds a student to a group.
  *
@@ -346,5 +293,94 @@ export async function deactivateGroupScheduleSlot(id: string): Promise<ActionRes
   }
 
   revalidateGroup(slot.groupId ?? undefined);
+  return { success: true };
+}
+
+const quickEditGroupSchema = z.discriminatedUnion("field", [
+  z.object({
+    id: z.string().min(1),
+    field: z.literal("name"),
+    value: z.string().trim().min(1, "A group needs a name").max(60),
+  }),
+  z.object({
+    id: z.string().min(1),
+    field: z.literal("notes"),
+    value: z.string().trim().max(500),
+  }),
+  z.object({ id: z.string().min(1), field: z.literal("active"), value: z.boolean() }),
+  z.object({ id: z.string().min(1), field: z.literal("teacherId"), value: z.string().min(1) }),
+  z.object({ id: z.string().min(1), field: z.literal("languageId"), value: z.string().min(1) }),
+]);
+
+/**
+ * Changes one field on a group, from the group's own page.
+ *
+ * Every rule `updateGroup` enforces still applies, because they are the group's
+ * rules and not the form's: the teacher must teach the group's language, and
+ * the language is locked while the group has members — they joined because they
+ * study the current one.
+ */
+export async function quickEditGroup(
+  input: z.infer<typeof quickEditGroupSchema>
+): Promise<ActionResult> {
+  await requireUser();
+
+  const parsed = quickEditGroupSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      success: false,
+      error: firstValidationMessage(parsed.error, "That value is not valid."),
+    };
+  }
+
+  const { id, field, value } = parsed.data;
+
+  const current = await db.group.findUnique({
+    where: { id },
+    select: {
+      teacherId: true,
+      languageId: true,
+      _count: { select: { members: true } },
+    },
+  });
+
+  if (!current) return { success: false, error: "That group no longer exists." };
+
+  if (field === "languageId") {
+    if (current.languageId !== value && current._count.members > 0) {
+      return {
+        success: false,
+        error:
+          "Remove the members before changing the language — they joined because they study the current one.",
+      };
+    }
+
+    const eligible = await checkTeacherForGroup(current.teacherId, value);
+    if (!eligible.ok) return { success: false, error: eligible.error };
+  }
+
+  if (field === "teacherId") {
+    const eligible = await checkTeacherForGroup(value, current.languageId);
+    if (!eligible.ok) return { success: false, error: eligible.error };
+  }
+
+  try {
+    await db.group.update({
+      where: { id },
+      data: field === "notes" ? { notes: value || null } : { [field]: value },
+    });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === "P2002") {
+        return { success: false, error: "A group with that name already exists." };
+      }
+      if (error.code === "P2025") {
+        return { success: false, error: "That group no longer exists." };
+      }
+    }
+    throw error;
+  }
+
+  revalidateGroup(id);
   return { success: true };
 }

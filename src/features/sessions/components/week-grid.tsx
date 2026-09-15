@@ -1,7 +1,7 @@
 "use client";
 
-import { useRef, useState, type KeyboardEvent } from "react";
-import { Check } from "lucide-react";
+import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+import { Check, UsersRound } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TONE_CLASSES, languageTone } from "@/lib/tone";
 import { placeDaySessions } from "../layout";
@@ -16,15 +16,27 @@ import {
 import { MoveDestinations, slotDomId, type DestinationSlot } from "./move-destinations";
 import { CreatePositions, createSlotDomId, type CreatePosition } from "./create-positions";
 import { sessionCardId } from "../element-ids";
+import { sessionTitle } from "../session-title";
 import type { CalendarSession, MovingSession } from "../queries";
 import type { CalendarDay } from "./calendar-day";
 
 /*
- * An hour tall enough for a card to hold three legible lines, and no taller:
- * the grid gains its presence from filling the width, not from growing down
- * the page. At 76px a normal working day no longer fitted on a laptop screen.
+ * How tall an hour is: as tall as the screen allows, between these two.
+ *
+ * The grid measures the space left below it and divides it by the hours on
+ * show, so on a large monitor the whole teaching day fits without scrolling.
+ * It never grows past 60px — a card holds its three lines by then, and more
+ * height is only empty space — and never shrinks below 42px, where a one-hour
+ * card still holds a name and a time. 42 rather than a rounder number because
+ * it is what lets a 1440×900 laptop, the most common screen in the office, show
+ * the whole day. A screen too short for that scrolls inside the grid.
  */
-const HOUR_HEIGHT = 60;
+const MAX_HOUR_HEIGHT = 60;
+const MIN_HOUR_HEIGHT = 42;
+/** The grid's border plus a little rounding, so a fitted day never scrolls by a hair. */
+const GRID_FRAME = 4;
+/** The grid's top padding, which keeps the first hour label clear of the header. */
+const GRID_TOP_PADDING = 10;
 /** Move mode stretches the grid so half-hour targets stay comfortably clickable. */
 const MOVE_HOUR_HEIGHT = 80;
 /**
@@ -87,7 +99,63 @@ export function WeekGrid({
   onExitMoveMode,
 }: Props) {
   const isMoving = movingSession !== null;
-  const hourHeight = isMoving ? MOVE_HOUR_HEIGHT : HOUR_HEIGHT;
+  const hourCount = Math.max(1, hours.length);
+
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLDivElement>(null);
+  const [fit, setFit] = useState<{ hourHeight: number; maxHeight: number } | null>(null);
+
+  /*
+   * Measured after layout and before paint, then again whenever the window
+   * changes size. Skipped while the grid is hidden: below `lg` the phone agenda
+   * is on screen instead, and a hidden element measures as zero.
+   */
+  useLayoutEffect(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+
+    function measure() {
+      if (!scroller || scroller.offsetParent === null) return;
+
+      const main = scroller.closest("main");
+      const page = main?.firstElementChild;
+      if (!main || !page) return;
+
+      const scrollerRect = scroller.getBoundingClientRect();
+      // From the top of the scrolling area rather than the viewport, so a page
+      // that has already been scrolled measures the same as one that has not.
+      const top = scrollerRect.top - main.getBoundingClientRect().top + main.scrollTop;
+      // Whatever sits under the grid — the legend, the page's own padding — as it
+      // actually measures. A fixed allowance was off by a few pixels, which was
+      // enough to leave a scrollbar on a day that otherwise fitted.
+      const below = page.getBoundingClientRect().bottom - scrollerRect.bottom;
+      const available = Math.floor(main.clientHeight - top - below);
+      const header = headerRef.current?.offsetHeight ?? 0;
+      const perHour = Math.floor(
+        (available - header - GRID_TOP_PADDING - GRID_FRAME) / hourCount
+      );
+
+      setFit({
+        hourHeight: Math.max(MIN_HOUR_HEIGHT, Math.min(MAX_HOUR_HEIGHT, perHour)),
+        maxHeight: Math.max(320, available),
+      });
+    }
+
+    measure();
+    // Again once the web fonts are in: the day headers use the display face,
+    // and swapping it in changes their height after the first measure.
+    let cancelled = false;
+    void document.fonts.ready.then(() => {
+      if (!cancelled) measure();
+    });
+    window.addEventListener("resize", measure);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("resize", measure);
+    };
+  }, [hourCount, isMoving]);
+
+  const hourHeight = isMoving ? MOVE_HOUR_HEIGHT : (fit?.hourHeight ?? MAX_HOUR_HEIGHT);
   const gridHeight = hours.length * hourHeight;
 
   const gridRef = useRef<HTMLDivElement>(null);
@@ -167,9 +235,15 @@ export function WeekGrid({
      * the full height of the day instead pushed the page into a scroll that
      * took the headers with it.
      */
-    <div className="w-full overflow-auto rounded-xl border bg-card shadow-xs lg:max-h-[calc(100dvh-15rem)]">
+    <div
+      ref={scrollerRef}
+      className="w-full overflow-auto rounded-xl border bg-card shadow-xs lg:max-h-[calc(100dvh-14rem)]"
+      // The measured bound replaces the CSS estimate as soon as it is known.
+      style={fit ? { maxHeight: fit.maxHeight } : undefined}
+    >
       <div className="w-full min-w-215">
         <div
+          ref={headerRef}
           className="sticky top-0 z-20 grid border-b bg-card"
           style={{ gridTemplateColumns: `48px repeat(${days.length}, minmax(0, 1fr))` }}
         >
@@ -217,7 +291,7 @@ export function WeekGrid({
           // it used to sit under the sticky header. This gives it room.
           style={{
             gridTemplateColumns: `48px repeat(${days.length}, minmax(0, 1fr))`,
-            paddingTop: 10,
+            paddingTop: GRID_TOP_PADDING,
           }}
           onKeyDown={handleGridKeyDown}
         >
@@ -248,13 +322,21 @@ export function WeekGrid({
             return (
               <div
                 key={day.date}
-                className={cn(
-                  "relative border-l",
-                  // A hairline at the top of today's column, not a wash over it.
-                  day.isToday && "border-t-2 border-t-primary"
-                )}
+                className="relative border-l"
                 style={{ height: gridHeight }}
               >
+                {/*
+                  A hairline at the top of today's column, not a wash over it.
+                  An overlay rather than a top border: a border takes 2px out of a
+                  column whose hour rows already add up to its full height, and
+                  those 2px gave a day that fitted the screen a scrollbar.
+                */}
+                {day.isToday && (
+                  <span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-x-0 top-0 z-10 h-0.5 bg-primary"
+                  />
+                )}
                 {hours.map((hour) => (
                   <div
                     key={hour}
@@ -316,7 +398,7 @@ export function WeekGrid({
                       aria-hidden={isMoving ? true : undefined}
                       onClick={(event) => onOpenSession(session, event.currentTarget)}
                       className={cn(
-                        "pointer-events-auto absolute overflow-hidden rounded-lg border border-l-4 px-2 py-1 text-left leading-tight transition-shadow motion-reduce:transition-none",
+                        "pointer-events-auto absolute overflow-hidden rounded-lg border border-l-4 px-2 py-0.5 text-left leading-tight transition-shadow motion-reduce:transition-none",
                         isMoving && "pointer-events-none",
                         isMoving && !isBeingMoved && "opacity-40",
                         isBeingMoved && "z-10 ring-2 ring-violet-600 ring-offset-1",
@@ -346,9 +428,11 @@ export function WeekGrid({
                         )}
                       >
                         {isCompleted && <Check className="size-3.5 shrink-0" />}
-                        <span className="truncate">
-                          {session.participants[0]?.studentName ?? "Class"}
-                        </span>
+                        {/* Marks a group at a glance, the way the timetable's "Grupo" does. */}
+                        {!isCompleted && session.groupName && (
+                          <UsersRound aria-hidden="true" className="size-3.5 shrink-0" />
+                        )}
+                        <span className="truncate">{sessionTitle(session)}</span>
                       </span>
                       <span className="block truncate text-[11px] text-muted-foreground">
                         {session.startLabel} · {session.teacherName.split(" ")[0]}

@@ -7,9 +7,11 @@ import { Prisma } from "@/generated/prisma/client";
 import {
   createLanguageSchema,
   teachingHoursSchema,
+  updateCoursePriceSchema,
   updateLanguageSchema,
   type CreateLanguageInput,
   type TeachingHoursInput,
+  type UpdateCoursePriceInput,
   type UpdateLanguageInput,
 } from "./schemas";
 import { ACADEMY_SETTINGS_ID } from "./constants";
@@ -151,5 +153,51 @@ export async function updateTeachingHours(
 
   revalidatePath("/settings");
   revalidatePath("/calendar");
+  return { success: true };
+}
+
+/**
+ * Sets the list price of one course.
+ *
+ * Changes what the payments screen shows as the course's price from now on,
+ * and nothing else: payments already recorded are facts about money that
+ * arrived, and students on the rate they started at are a matter between them
+ * and Dhanna that this table cannot see. Upserted, because a modality has no
+ * row until somebody changes its price.
+ */
+export async function updateCoursePrice(input: UpdateCoursePriceInput): Promise<ActionResult> {
+  await requireUser();
+
+  const parsed = updateCoursePriceSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      success: false,
+      error: parsed.error.issues[0]?.message ?? "Please check the price and try again.",
+    };
+  }
+
+  const { modality, mxn, usd } = parsed.data;
+
+  try {
+    await db.coursePrice.upsert({
+      where: { modality },
+      update: { mxnCents: mxn, usdCents: usd },
+      create: { modality, mxnCents: mxn, usdCents: usd },
+    });
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2021"
+    ) {
+      return {
+        success: false,
+        error: "Price storage is not ready on this database yet.",
+      };
+    }
+    throw error;
+  }
+
+  revalidatePath("/settings");
+  revalidatePath("/payments");
   return { success: true };
 }

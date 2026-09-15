@@ -1,7 +1,9 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import wordmark from "../../../public/brand/darpe-wordmark.webp";
 import {
   LayoutDashboard,
   CalendarDays,
@@ -14,6 +16,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LogoutButton } from "@/features/auth/components/logout-button";
+import { MobileTopBar } from "./mobile-top-bar";
 
 /*
  * Grouped information architecture. Every entry points at a route that exists —
@@ -55,8 +58,8 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
 ];
 
 /*
- * The phone bar keeps only what is used on the move. Money and settings are desk
- * work, so they live in the sidebar rather than spending one of four tabs.
+ * The phone bar keeps only what is used on the move. Money and settings are
+ * reached from the avatar in `MobileTopBar` instead of spending a tab each.
  */
 const DESK_ONLY_GROUPS = new Set(["Money", "Workspace"]);
 
@@ -64,23 +67,38 @@ const MOBILE_ITEMS = NAV_GROUPS.filter(
   (group) => !DESK_ONLY_GROUPS.has(group.label)
 ).flatMap((group) => group.items);
 
-export function AppSidebar({ userName, userRole }: { userName: string; userRole: string }) {
+export function AppSidebar({
+  userName,
+  userRole,
+  userEmail,
+}: {
+  userName: string;
+  userRole: string;
+  userEmail: string;
+}) {
   const pathname = usePathname();
 
   return (
     <>
+      <MobileTopBar userName={userName} userEmail={userEmail} />
       <aside className="hidden w-60 shrink-0 overflow-y-auto border-r bg-sidebar p-4 lg:flex lg:flex-col">
         {/*
-          A textual wordmark, not a logo: DARPE's official mark has not been
-          supplied, and inventing one would be worse than setting the name well.
-          No motif here — as a faint watermark behind the name it read as an
-          accidental drawing rather than as brand texture.
+          DARPE's own wordmark, cut out of its supplied backdrop so it sits on
+          the sidebar rather than on a near-white rectangle of its own. The
+          letters are the brand's — the geometric open forms are distinctive
+          and no font substitutes for them, which is why this is an image and
+          not type. Alt text names the product, so the sidebar still announces
+          itself to a screen reader.
         */}
         <div className="px-3 py-4">
-          <p className="font-serif text-xl font-semibold tracking-[0.16em] text-primary">
-            DARPE
-          </p>
-          <p className="text-[10px] uppercase tracking-[0.28em] text-muted-foreground">
+          <Image
+            src={wordmark}
+            alt="DARPE"
+            priority
+            sizes="148px"
+            className="h-auto w-[148px]"
+          />
+          <p className="mt-1 text-[10px] uppercase tracking-[0.28em] text-muted-foreground">
             Global admin
           </p>
         </div>

@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, CalendarDays, Mail, Pencil, Phone } from "lucide-react";
+import { ArrowLeft, CalendarDays } from "lucide-react";
 import { getTeacherProfile } from "@/features/teachers/queries";
+import { TeacherIdentityCard } from "@/features/teachers/components/teacher-identity";
+import { getStudentFormOptions } from "@/features/students/queries";
 import { STUDENT_STATUS_LABELS } from "@/features/students/schemas";
 import { EmptyState } from "@/components/shared/empty-state";
-import { InitialsAvatar, LanguageChip } from "@/components/shared/identity";
-import { PageContainer, PageHeader, Section } from "@/components/shared/page";
+import { InitialsAvatar } from "@/components/shared/identity";
+import { PageContainer, Section } from "@/components/shared/page";
 import { INTERACTIVE_ROW } from "@/lib/interaction";
 import { TONE_CLASSES, languageTone } from "@/lib/tone";
 import { cn } from "@/lib/utils";
@@ -32,7 +34,10 @@ export default async function TeacherProfilePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const teacher = await getTeacherProfile(id);
+  const [teacher, { languages }] = await Promise.all([
+    getTeacherProfile(id),
+    getStudentFormOptions(),
+  ]);
 
   if (!teacher) notFound();
 
@@ -45,67 +50,35 @@ export default async function TeacherProfilePage({
         <ArrowLeft className="size-4" /> All teachers
       </Link>
 
-      <PageHeader
-        title={
-          <span className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            {teacher.name}
-            <Badge variant={teacher.active ? "default" : "outline"}>
-              {teacher.active ? "Active" : "Inactive"}
-            </Badge>
-          </span>
-        }
-        description={
-          teacher.languageNames.length > 0 ? (
-            <span className="mt-1 flex flex-wrap gap-1.5">
-              {teacher.languageNames.map((name) => (
-                <LanguageChip key={name} name={name} />
-              ))}
-            </span>
-          ) : (
-            "No languages assigned"
-          )
-        }
+      {/*
+        Everything about the teacher is edited on this card. No edit page — see
+        `inline-field.tsx` for why the product has none.
+      */}
+      <TeacherIdentityCard
+        teacher={{
+          id: teacher.id,
+          firstName: teacher.firstName,
+          lastName: teacher.lastName,
+          email: teacher.email,
+          phone: teacher.phone,
+          notes: teacher.notes,
+          active: teacher.active,
+          languageIds: teacher.languageIds,
+          languageNames: teacher.languageNames,
+        }}
+        languages={languages}
         actions={
-          <>
-            <Button
-              nativeButton={false}
-              render={<Link href={`/calendar?teacher=${teacher.id}`} />}
-            >
-              <CalendarDays className="size-4" /> Open calendar
-            </Button>
-            <Button
-              variant="outline"
-              nativeButton={false}
-              render={<Link href={`/teachers/${teacher.id}/edit`} />}
-            >
-              <Pencil className="size-4" /> Edit
-            </Button>
-          </>
+          <Button
+            nativeButton={false}
+            render={<Link href={`/calendar?teacher=${teacher.id}`} />}
+          >
+            <CalendarDays className="size-4" /> Open calendar
+          </Button>
         }
       />
 
-      <div className="grid gap-x-8 gap-y-6 lg:grid-cols-3">
+      <div className="mt-6 grid gap-x-8 gap-y-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-1">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">Contact</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              <p className="flex items-start gap-2">
-                <Mail className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-                <span className="min-w-0 wrap-break-word">
-                  {teacher.email ?? <span className="text-muted-foreground">No email</span>}
-                </span>
-              </p>
-              <p className="flex items-start gap-2">
-                <Phone className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-                <span className="min-w-0 wrap-break-word">
-                  {teacher.phone ?? <span className="text-muted-foreground">No phone</span>}
-                </span>
-              </p>
-            </CardContent>
-          </Card>
-
           <Card>
             <CardHeader>
               <CardTitle className="text-sm">This week</CardTitle>
@@ -178,7 +151,7 @@ export default async function TeacherProfilePage({
 
           <Section
             title="Assigned students"
-            description="Students with this teacher as their primary teacher. Archived students are not listed."
+            description="Students assigned to this teacher"
           >
             {teacher.students.length === 0 ? (
               <EmptyState tone="compact">No students are assigned to this teacher.</EmptyState>

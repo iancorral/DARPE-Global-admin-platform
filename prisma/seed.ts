@@ -14,6 +14,8 @@ const LANGUAGES = [
   { name: "German", code: "de" },
   { name: "Japanese", code: "ja" },
   { name: "Swedish", code: "sv" },
+  { name: "Chinese", code: "zh" },
+  { name: "Korean", code: "ko" },
 ];
 
 /*
@@ -112,7 +114,7 @@ async function seedDemoRecords() {
    * class anywhere: the calendar legend, which lists only the languages the
    * week actually contains, correctly had nothing to show for it.
    */
-  const statuses = ["ACTIVE", "ACTIVE", "ACTIVE", "TRIAL", "ACTIVE", "ACTIVE", "PAUSED", "TRIAL"] as const;
+  const statuses = ["ACTIVE", "ACTIVE", "ACTIVE", "ACTIVE", "ACTIVE", "ACTIVE", "PAUSED", "ACTIVE"] as const;
 
   const students = [];
   for (const [index, student] of DEMO_STUDENTS.entries()) {

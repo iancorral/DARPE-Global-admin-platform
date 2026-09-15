@@ -1,14 +1,11 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Form, FormControl, FormField, FormItem, FormLabel, FormMessage,
@@ -16,8 +13,14 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { FormActions, FormCard, FormSection } from "@/components/shared/page";
-import { createGroup, updateGroup } from "../actions";
+import { GraduationCap, StickyNote, UsersRound } from "lucide-react";
+import { FormActions, FormCard, FormLayout, FormSection } from "@/components/shared/page";
+import {
+  SimilarRecords,
+  SimilarRecordsInline,
+} from "@/features/directory/components/similar-records";
+import type { DirectoryEntry } from "@/features/directory/similar";
+import { createGroup } from "../actions";
 import { groupFormSchema, type GroupFormInput } from "../schemas";
 
 type Teacher = { id: string; name: string; languageIds: string[] };
@@ -26,24 +29,26 @@ type Language = { id: string; name: string };
 type Props = {
   teachers: Teacher[];
   languages: Language[];
-  /** When present the form edits this group instead of creating one. */
-  group?: { id: string; active: boolean } & GroupFormInput;
-  /** True once the group has members: the language is then locked. */
-  hasMembers?: boolean;
+  /** Every group on record, newest first — typing "Grupo" shows the numbers taken. */
+  existing: DirectoryEntry[];
 };
 
-export function GroupForm({ teachers, languages, group, hasMembers = false }: Props) {
+/**
+ * Creating a group. Editing one happens on the group's own page, field by
+ * field — see `inline-field.tsx`.
+ */
+export function GroupForm({ teachers, languages, existing }: Props) {
   const router = useRouter();
-  const [active, setActive] = useState(group?.active ?? true);
 
   const form = useForm<GroupFormInput>({
     resolver: zodResolver(groupFormSchema),
-    defaultValues: group ?? { name: "", teacherId: "", languageId: "", notes: "" },
+    defaultValues: { name: "", teacherId: "", languageId: "", notes: "" },
   });
 
   // `useWatch` rather than `form.watch()`: the subscription is memoizable, so
   // the component re-renders on this one field instead of on every keystroke.
   const languageId = useWatch({ control: form.control, name: "languageId" });
+  const name = useWatch({ control: form.control, name: "name" });
 
   /*
    * Only teachers who actually teach the chosen language. The server checks the
@@ -54,19 +59,6 @@ export function GroupForm({ teachers, languages, group, hasMembers = false }: Pr
     : teachers;
 
   async function onSubmit(values: GroupFormInput) {
-    if (group) {
-      const result = await updateGroup({ id: group.id, active, ...values });
-
-      if (!result.success) {
-        toast.error(result.error);
-        return;
-      }
-
-      toast.success("Group updated");
-      router.push(`/groups/${group.id}`);
-      return;
-    }
-
     const result = await createGroup(values);
 
     if (!result.success) {
@@ -79,10 +71,20 @@ export function GroupForm({ teachers, languages, group, hasMembers = false }: Pr
   }
 
   return (
+    <FormLayout
+      aside={
+        <SimilarRecords
+          query={name ?? ""}
+          entries={existing}
+          noun={{ singular: "group", plural: "groups" }}
+          className="hidden lg:block"
+        />
+      }
+    >
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)}>
         <FormCard>
-          <FormSection title="The group" description="What it is called and what it studies.">
+          <FormSection title="Name" icon={UsersRound} tone="violet">
             <FormField control={form.control} name="name" render={({ field }) => (
               <FormItem>
                 <FormLabel>Name</FormLabel>
@@ -92,7 +94,14 @@ export function GroupForm({ teachers, languages, group, hasMembers = false }: Pr
                 <FormMessage />
               </FormItem>
             )} />
+            <SimilarRecordsInline query={name ?? ""} entries={existing} className="lg:hidden" />
+          </FormSection>
 
+          <FormSection
+            title="What they study"
+            icon={GraduationCap}
+            tone="teal"
+          >
             <div className="grid gap-4 sm:grid-cols-2">
               <FormField control={form.control} name="languageId" render={({ field }) => (
                 <FormItem>
@@ -109,7 +118,6 @@ export function GroupForm({ teachers, languages, group, hasMembers = false }: Pr
                       form.setValue("teacherId", "");
                     }}
                     value={field.value}
-                    disabled={hasMembers}
                   >
                     <FormControl>
                       <SelectTrigger className="w-full">
@@ -124,12 +132,6 @@ export function GroupForm({ teachers, languages, group, hasMembers = false }: Pr
                       ))}
                     </SelectContent>
                   </Select>
-                  {hasMembers && (
-                    <p className="text-xs text-muted-foreground">
-                      Locked while the group has members — they joined because they study
-                      this language.
-                    </p>
-                  )}
                   <FormMessage />
                 </FormItem>
               )} />
@@ -168,6 +170,13 @@ export function GroupForm({ teachers, languages, group, hasMembers = false }: Pr
               )} />
             </div>
 
+          </FormSection>
+
+          <FormSection
+            title="Notes"
+            icon={StickyNote}
+            tone="blue"
+          >
             <FormField control={form.control} name="notes" render={({ field }) => (
               <FormItem>
                 <FormLabel>
@@ -181,32 +190,9 @@ export function GroupForm({ teachers, languages, group, hasMembers = false }: Pr
             )} />
           </FormSection>
 
-          {group && (
-            <FormSection title="Status" description="Whether the group is still running.">
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="group-active"
-                  checked={active}
-                  onCheckedChange={(checked) => setActive(checked === true)}
-                />
-                <Label htmlFor="group-active" className="font-normal">
-                  Active
-                </Label>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                A closed group keeps every class it already has and stops producing new
-                ones. Nothing is deleted.
-              </p>
-            </FormSection>
-          )}
-
           <FormActions>
             <Button type="submit" disabled={form.formState.isSubmitting}>
-              {form.formState.isSubmitting
-                ? "Saving..."
-                : group
-                  ? "Save changes"
-                  : "Create group"}
+              {form.formState.isSubmitting ? "Saving..." : "Create group"}
             </Button>
             <Button type="button" variant="outline" onClick={() => router.back()}>
               Cancel
@@ -215,5 +201,6 @@ export function GroupForm({ teachers, languages, group, hasMembers = false }: Pr
         </FormCard>
       </form>
     </Form>
+    </FormLayout>
   );
 }

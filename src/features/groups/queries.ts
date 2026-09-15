@@ -10,6 +10,9 @@ export type GroupListRow = {
   name: string;
   active: boolean;
   teacherName: string;
+  /// False when the group's teacher has left. The group generates nothing in
+  /// that state, so the list has to say so rather than looking healthy.
+  teacherActive: boolean;
   languageName: string;
   memberCount: number;
   slotCount: number;
@@ -22,7 +25,7 @@ export async function getGroupRows(): Promise<GroupListRow[]> {
       id: true,
       name: true,
       active: true,
-      teacher: { select: { firstName: true, lastName: true } },
+      teacher: { select: { firstName: true, lastName: true, active: true } },
       language: { select: { name: true } },
       _count: { select: { members: true } },
       scheduleSlots: { where: { active: true }, select: { id: true } },
@@ -35,6 +38,7 @@ export async function getGroupRows(): Promise<GroupListRow[]> {
     name: group.name,
     active: group.active,
     teacherName: fullName(group.teacher),
+    teacherActive: group.teacher.active,
     languageName: group.language.name,
     memberCount: group._count.members,
     slotCount: group.scheduleSlots.length,
@@ -74,6 +78,7 @@ export type GroupDetail = {
   notes: string | null;
   teacherId: string;
   teacherName: string;
+  teacherActive: boolean;
   languageId: string;
   languageName: string;
   members: GroupMemberRow[];
@@ -100,7 +105,7 @@ export async function getGroupDetail(
       notes: true,
       teacherId: true,
       languageId: true,
-      teacher: { select: { firstName: true, lastName: true } },
+      teacher: { select: { firstName: true, lastName: true, active: true } },
       language: { select: { name: true } },
       members: {
         select: {
@@ -160,6 +165,7 @@ export async function getGroupDetail(
     notes: group.notes,
     teacherId: group.teacherId,
     teacherName: fullName(group.teacher),
+    teacherActive: group.teacher.active,
     languageId: group.languageId,
     languageName: group.language.name,
     members: group.members.map((member) => ({

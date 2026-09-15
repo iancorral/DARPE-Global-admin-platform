@@ -22,6 +22,16 @@ model Profile {
   email     String   @unique
   name      String
   role      UserRole @default(ADMIN)
+  /// When this person last set their own password, through the app.
+  ///
+  /// Null means they are still on the password the account was created with,
+  /// which somebody else chose and therefore knows. That is the only question
+  /// this field answers, and it is why it is a date rather than a flag: "has
+  /// never set one" and "set one in August" are both worth being able to see.
+  ///
+  /// Supabase Auth owns the password itself; this records only that the change
+  /// went through the app, because `auth.users` is not Prisma's to read.
+  passwordSetAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -49,11 +59,54 @@ model AcademySettings {
   @@map("academy_settings")
 }
 
+/// The list price of one course, as staff have set it.
+///
+/// One row per modality, and only for the modalities somebody has edited: the
+/// application starts from the published table in
+/// `src/features/finance/pricing.ts` and a row here overrides it. Prices are
+/// reviewed yearly and students keep the rate they started at, so this is a
+/// list price and never an amount a particular student owes.
+model CoursePrice {
+  modality  Modality @id
+  mxnCents  Int
+  usdCents  Int
+  updatedAt DateTime @updatedAt
+
+  @@map("course_prices")
+}
+
+/// Where a student is in their relationship with DARPE.
+///
+/// There is no trial state: DARPE does not give trial classes. Somebody who
+/// wants to try one books an advisory, which is an ordinary paid class.
 enum StudentStatus {
-  TRIAL
   ACTIVE
   PAUSED
   ARCHIVED
+}
+
+/// How a student's place is being paid for, in DARPE's own words.
+///
+/// This is deliberately separate from `StudentStatus`: an active student is
+/// *also* paid, pending, or one of the arrangements below, and the two answer
+/// different questions. Collapsing them into one field would make "a student on
+/// benefit who has paused" impossible to record, and would leave nothing to
+/// drive the archive-after-a-month rule.
+///
+/// BENEFIT and COLLABORATION are not payment states at all — they are why no
+/// money is expected. Staff still see one chip per student, because the list
+/// shows the lifecycle when it is not ACTIVE and this when it is.
+enum BillingStatus {
+  /// Paid for the current course.
+  PAID
+  /// Owes the current course.
+  PENDING
+  /// Place held, not yet paid.
+  RESERVED
+  /// A DARPE teacher taking classes with another DARPE teacher.
+  BENEFIT
+  /// Classes in exchange for work, such as videos about the academy.
+  COLLABORATION
 }
 
 enum Modality {
@@ -140,10 +193,23 @@ model Student {
   lastName         String?
   email            String?
   phone            String?
+  /// CEFR level, "A1" through "C2". Stored as text rather than an enum because
+  /// DARPE has not finished deciding how it grades: changing a list in Zod is
+  /// cheap, changing a Postgres enum is a migration.
   level            String?
   goal             String?
   modality         Modality
   status           StudentStatus @default(ACTIVE)
+  billing          BillingStatus @default(PENDING)
+  /// How this student usually pays. A fact about the person, not about one
+  /// payment — staff want to see at a glance who is on transfer and who is on
+  /// Stripe, without opening a payment record. Null until somebody says.
+  payMethod        PaymentMethod?
+  /// When the student was last paused. Null whenever they are not paused.
+  ///
+  /// Recorded so that "paused for over a month" is a fact rather than a guess;
+  /// nothing else can answer it, because a status field remembers no dates.
+  pausedAt         DateTime?
   startedAt        DateTime?
   languageId       String
   primaryTeacherId String?

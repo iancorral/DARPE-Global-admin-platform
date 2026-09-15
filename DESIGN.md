@@ -59,7 +59,8 @@ The admin tool **evolves** it rather than copying it:
 | --- | --- |
 | Violet / lavender palette | Single accent color; lavender only as tint |
 | Serif headlines | Wordmark, greeting, page titles and key figures only |
-| Dotted globe motif | `DarpeMotif`, as a faint watermark — see below |
+| Dotted globe motif | DARPE's own globe icon, as favicon and app icon |
+| Mascots | Alien and cat, peeking from the dashboard greeting and the login's brand panel |
 | Flags per language | Replaced by colored dots + language name |
 | Warm, human copy | Kept: plain, friendly English, never corporate |
 
@@ -89,9 +90,9 @@ and adding one needs a real justification. Rules, met by both current charts:
 - Every animation class is switched off wholesale by the
   `prefers-reduced-motion` block in `globals.css` — elements start at their
   final state rather than animating.
-- **No chart may show invented data without saying so.** The finance chart is
-  the one place sample figures exist, and it carries a "Sample data" badge
-  whenever they are on.
+- **No chart may show invented data.** Every figure is a real record. A period
+  with nothing in it renders a sentence saying so — a line of zeroes is not a
+  chart, it is a rendering fault that happens to be accurate.
 
 ### The motif
 
@@ -109,6 +110,63 @@ must be one coherent composition inside a bounded area, never fragments behind
 interactive elements.
 
 Always `aria-hidden` and `pointer-events-none`, drawn in `currentColor`.
+
+### A globe was tried, and removed
+
+A generated dotted globe once sat in a bespoke greeting band on the dashboard.
+It was defensible on paper — DARPE has no campus, teaches across time zones, and
+its own materials carry a dotted world map — and it still failed: at the size it
+could be cropped to, it read as scattered dots rather than as a globe, and the
+band it sat in made the dashboard look like a different product from every other
+screen. The dashboard subsequently returned to the shared `PageHeader`.
+
+The lesson is worth more than the mark: a decorative flourish on one screen
+costs consistency across all of them, and consistency is what makes a product
+feel finished. Brand illustration should live in one bounded composition,
+not scattered through the app.
+
+### Welcome mascots
+
+Ian has now supplied the alien-and-cat DARPE artwork and requested a greeting
+animation. `WelcomeBanner` replaces only the dashboard header, retaining its
+real greeting, context and calendar action. The generated adaptation removes
+the overlaid logo and globe and reconstructs the obscured clothing; it is an
+illustration based on the supplied mark, not a replacement official logo.
+
+The production asset is `public/brand/darpe-mascots-welcome.png`. It uses an
+opaque lavender background because the image editor's transparency attempts
+produced a painted checkerboard. A CSS edge mask joins it to the lavender banner.
+Generation prompts and provenance are recorded beside the asset in `README.md`.
+
+On desktop the pair occupies a 240px column. Below 640px it occupies 112px
+beside the title; description and action span the width below. Space is reserved
+before the image loads. Next Image supplies responsive image sizes.
+
+After the image loads, the pair rises into view once (480ms), then tilts gently
+as a greeting (800ms). This moves the illustration as a whole, not individual
+hands. There is no loop, hover replay or extra animation dependency. Under
+reduced motion the mascots remain static. Decorative art has empty alt text and
+cannot intercept clicks. Do not repeat it in operational tables or forms.
+
+### Motion
+
+The welcome mascots are the one bounded decorative animation inside the app. On
+the login screen the same pair peeks in and then drifts a few pixels up and down
+on a four-second loop (`darpe-mascots-float`): a loop would be a distraction
+beside a table, and is harmless on a screen nobody works on. Both the greeting
+and the login lift the pair slightly on hover. Other motion is feedback — a hover tint, a focus ring, a pending state, a chart drawing itself
+once as its data arrives, or a brief fade when navigating to another view.
+All of it is switched off under `prefers-reduced-motion`.
+
+At Ian's request, route content now fades from 60% to full opacity over 180 ms
+with ease-out timing (`AppContent`). The shell stays fixed, content is never
+hidden or delayed, and forms are not remounted to replay motion. Only pathname
+changes trigger it; filters, calendar weeks and dialogs in search parameters do
+not. The native Web Animations API cancels it on navigation or reduced motion.
+
+**No animation library.** GSAP was considered and turned down: CSS keyframes and
+transitions cover every case here, and a dependency shipped to every page to
+move a few pixels is not a trade worth making.
 
 ---
 
@@ -128,20 +186,31 @@ Brand (from the presentation)
   warm near-white  #FAF7FC    app page background
 
 Applied tokens (globals.css :root)
-  background       #FAF7FC    warm page ground, never cold gray
-  foreground       #2A2137    violet-tinted near-black (14.4:1 on background)
-  card             #FFFFFF
-  border / input   #E5DBEC    lavender-tinted 1px borders
-  primary          #7C3AED    white on it 5.7:1; as text on background 5.3:1
-  secondary/accent #ECDFF2    with #5B21B6 text
-  muted-foreground #655D6E    5.9:1 on background — the darkest "muted" allowed
+  background       #EEE3F4    brand pale lavender, lightened for contrast
+  foreground       #241C30    violet-tinted near-black (13.19:1 on background)
+  card             #FFFFFF    every panel lifts off the ground
+  sidebar          #FAF7FC    a lighter lavender navigation surface
+  border / input   #DDCDEE    lavender-tinted 1px borders
+  primary          #7C3AED    white on it 5.7:1; as text on background 4.59:1
+  secondary/accent #E6D7F3    with #5B21B6 text
+  muted-foreground #5F5670    5.55:1 on background
   ring             #7C3AED    focus ring, same as the accent
 ```
+
+**The ground carries colour, the cards do not.** An earlier build used a
+near-white `#FAF7FC` page with white cards on it, and the two were within a
+hair of each other: nothing had an edge, and the whole product read as a
+document rather than as software. The ground now uses `#EEE3F4` (previously
+`#F3ECFA`), following Ian's request for more lavender in the app's surroundings.
+It lightens the brand's `#ECDFF2` enough to keep existing primary text above
+4.5:1 without recolouring icons or actions. White cards retain separation, and no surface anywhere
+is a saturated violet — a dark brand-coloured ground would be worse than the
+washed-out one it replaced.
 
 The working accent is **`#7C3AED`**, not the presentation's deep `#482D79`.
 Deep violet is accessible but reads as institutional — the product looked like
 office software. The brand's brighter violet still passes comfortably: white on
-it is 5.7:1, and as text on the warm background 5.3:1. `#5B21B6` carries text on
+it is 5.7:1, and as text on the lavender background 4.59:1. `#5B21B6` carries text on
 pale-lavender tints, where a lighter violet would not hold.
 
 Never set text in mauve, medium lavender or lavender gray — they fail WCAG AA
@@ -177,19 +246,40 @@ place a tone is used also states the meaning in text or an icon: a cancelled
 class is dashed and struck through, a completed one carries a tick, a language
 chip names its language beside the dot.
 
-### Language colours
+### Language colours — the flag, where it does not collide
 
-DARPE teaches **seven** languages, and each has its own tone — no two share a
-colour, and plum is deliberately left free to mean "not one of ours":
+DARPE teaches **nine** languages, and each wears the colour its flag makes
+people think of. That beats an arbitrary spread: the strongest association most
+people carry for a language is its country's flag, so staff learn the mapping
+once and stop reading the label.
 
-English violet · Spanish teal · French blue · Italian amber · German cyan ·
-Japanese rose · **Swedish moss**
+| | | | |
+| --- | --- | --- | --- |
+| Spanish **amber** — Spain's gold | English **indigo** — Union Jack navy | French **blue** — the flag blue | Italian **moss** — the green stripe |
+| German **slate** — the black band | Japanese **rose** — the crimson circle | Chinese **clay** — vermilion | Korean **teal** — the taegeuk's blue |
+| Swedish **cyan** — its pale blue | | | |
+
+**Where fidelity and distinctness pull against each other, distinctness wins.**
+The whole job of the colour is picking a row out at a glance, and four of these
+flags are mostly red while three are mostly blue. So Japanese takes crimson (its
+flag is a red circle and nothing else) and Chinese the warmer vermilion beside
+it; German goes graphite for the black in its flag rather than becoming a fourth
+red.
+
+**Violet is deliberately absent.** It is DARPE's own colour, and a language
+wearing it would compete with the interface. Plum stays free to mean "not one of
+ours".
+
+The chip carries the colour twice: a saturated dot beside a tinted pill. A fully
+saturated pill shouts across a table of fifty rows; the tint alone was too faint
+to find.
 
 `languageTone()` resolves deterministically — by stored code first (so renaming
 a language keeps its colour), then by name in English or Spanish (`Sueco`,
 `Svenska`), then plum. No migration and no stored colour: the mapping is
-presentation, and `src/lib/tone.test.ts` pins it, including that the seven stay
-distinct.
+presentation. `src/lib/tone.test.ts` asserts **the rules, not the palette** —
+that no two languages collide, that none takes violet, that either spelling
+gives the same answer — so a future recolour changes one file, not the tests.
 
 The calendar's legend is derived from the sessions in the week on screen
 (`visibleLanguageLegend`), so it explains the colours actually present and
@@ -316,6 +406,81 @@ with a thin deep-violet left rule and a faint lavender tint, not a filled pill.
 The mobile bar may later gain a fifth `More` tab, only once it has at least one
 real destination.
 
+### Tables
+
+**Every table in the product is `DataTable`** (`src/components/shared/data-table.tsx`).
+Not a convention — the only implementation. Each screen used to lay out its own
+`<table>`, so no two agreed on column widths, and the browser divided space by
+content: one long student name made every other column narrow, and the same
+column was a different width on two screens showing the same people.
+
+Columns are declared with an explicit width and the table is `table-fixed`:
+
+- **Widths are percentages**, so the proportions hold at any window size.
+- **Exactly one column omits its width** — the identifying one, usually a
+  person's name. It absorbs whatever is left.
+- **Numbers are right-aligned and tabular.** Digits line up down a column or
+  there is no reason to have a column.
+- **A row that navigates is one link**, stretched across the row, so the whole
+  row is clickable while staying a single tab stop. A cell with its own control
+  declares `interactive: true`, which lifts it above that link.
+- **Below `md` the table becomes cards.** Six columns do not fit on a phone, and
+  a sideways-scrolling table is not a list anyone reads.
+
+### Editing in place — there are no edit pages
+
+**The product has no `/edit` route.** A record's own page *is* its editor: every
+value on it is its own control and its own one-field write. That is what CRMs
+settled on years ago (Notion, Linear, Attio) and it is what DARPE's staff need —
+they administer data all day, and changing a phone number should not be four
+navigations and a submit that rewrites ten columns.
+
+The primitives are in `src/components/shared/inline-field.tsx`:
+
+- `InlineText` — click the value, type, Enter or blur commits, Escape reverts.
+- `InlineSelect` — `render` draws the closed control, so the same component is a
+  status chip on one screen and a line of text on another.
+- `InlineToggle` — a yes/no fact: active, closed.
+
+All three are optimistic (the value changes on click; the server's answer
+replaces it, or the old value returns with an error toast) and all three write
+exactly one field. The `Select` trigger's own caret is always hidden
+(`[&>svg]:hidden`) — a chevron inside a status pill made the cell read as a form
+field rather than as a status.
+
+**Forms are for creating only.** `/students/new`, `/teachers/new`, `/groups/new`.
+A form makes sense when nothing exists yet and every field must be filled at
+once; it makes no sense for changing one value on a record that already exists.
+
+**Server rules do not move to the client.** A group's language is locked while it
+has members; a teacher must teach the group's language. Those refusals come back
+as an error toast saying why, rather than an option quietly missing from a menu.
+
+### Forms
+
+`FormItem` sets `grid content-start gap-2`. Without `content-start` the implicit
+rows stretch inside a taller grid cell, which happens on every two-column row
+where one field has a hint and the other does not — and the two inputs end up at
+different heights. That was the asymmetry everyone could see and nobody could
+name.
+
+Sections carry an icon in a tinted tile (`FormSection`'s `icon` and `tone`), so a
+long form reads as three short ones.
+
+### Dates
+
+**Never `<input type="date">`.** It renders a different widget in every browser,
+in that browser's colours, at that browser's size — nothing else on the page
+looks like it. `DateField` (`src/components/shared/date-field.tsx`) is the date
+control everywhere, built on the pure `monthGrid` helpers so no `Date` object is
+constructed and no date can shift by a day through a timezone.
+
+Its calendar is **portalled to `<body>` and positioned `fixed`**, and flips above
+the field when there is no room below. An absolutely positioned panel is clipped
+by any ancestor that scrolls or hides overflow; inside a dialog — which does both
+— it came out sliced in half with the dialog's scrollbars trying to reach it. Any
+popover the product grows later has the same constraint.
+
 ---
 
 ## 7. Components
@@ -415,7 +580,8 @@ Conventions:
 - Client-side validation is UX; server-side validation is the real check. Both use
   the same Zod schema.
 - Error messages are specific and actionable, never technical.
-- Transitions: 150 ms on interactive states. No entrance animations on page content.
+- Transitions: 150 ms on interactive states; a 180 ms opacity entrance on route
+  content, respecting reduced motion. No exit delays or page movement.
 
 ---
 

@@ -73,7 +73,18 @@ function FormItem({ className, ...props }: React.ComponentProps<"div">) {
 
   return (
     <FormItemContext.Provider value={{ id }}>
-      <div data-slot="form-item" className={cn("grid gap-2", className)} {...props} />
+      {/*
+        `content-start` is load-bearing. Without it the implicit rows stretch to
+        fill a grid cell that is taller than its content — which happens on
+        every two-column form row where one field has a hint and the other does
+        not — and the two fields' inputs end up at different heights. That was
+        the "form isn't symmetrical" everyone could see and nobody could name.
+      */}
+      <div
+        data-slot="form-item"
+        className={cn("grid content-start gap-2", className)}
+        {...props}
+      />
     </FormItemContext.Provider>
   );
 }

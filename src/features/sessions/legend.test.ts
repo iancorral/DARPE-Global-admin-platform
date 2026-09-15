@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { languageTone } from "@/lib/tone";
 import { visibleLanguageLegend } from "./legend";
 
 describe("visibleLanguageLegend", () => {
@@ -10,8 +11,10 @@ describe("visibleLanguageLegend", () => {
         { languageName: "Spanish" },
       ])
     ).toEqual([
-      { name: "English", tone: "violet" },
-      { name: "Spanish", tone: "teal" },
+      // The tones themselves are `languageTone`'s to decide; what this asserts
+      // is that the legend agrees with it and lists each language once.
+      { name: "English", tone: languageTone({ name: "English" }) },
+      { name: "Spanish", tone: languageTone({ name: "Spanish" }) },
     ]);
   });
 
@@ -33,7 +36,7 @@ describe("visibleLanguageLegend", () => {
     const entries = visibleLanguageLegend([{ languageName: "Italian" }]);
 
     expect(entries).toHaveLength(1);
-    expect(entries[0]).toEqual({ name: "Italian", tone: "amber" });
+    expect(entries[0]).toEqual({ name: "Italian", tone: languageTone({ name: "Italian" }) });
   });
 
   it("gives an unrecognised language the neutral tone rather than dropping it", () => {

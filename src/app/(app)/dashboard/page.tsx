@@ -17,10 +17,12 @@ import { getDashboardData, type DashboardSession } from "@/features/dashboard/qu
 import { DASHBOARD_COPY, greetingForHour } from "@/features/dashboard/copy";
 import { ActivityChart } from "@/features/dashboard/components/activity-chart";
 import { KpiCard } from "@/features/dashboard/components/kpi-card";
+import { WelcomeBanner } from "@/features/dashboard/components/welcome-banner";
+import { TemporaryPasswordNotice } from "@/features/auth/components/temporary-password-notice";
 import { getFinanceSnapshot } from "@/features/finance/provider";
 import { FinanceSection } from "@/features/finance/components/finance-section";
 import { InitialsAvatar } from "@/components/shared/identity";
-import { DashboardCard, PageContainer, PageHeader } from "@/components/shared/page";
+import { DashboardCard, PageContainer } from "@/components/shared/page";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -52,17 +54,11 @@ export default async function DashboardPage() {
 
   return (
     <PageContainer>
-      <PageHeader
+      <WelcomeBanner
         title={firstName ? `${greeting}, ${firstName}` : greeting}
-        description={DASHBOARD_COPY.contextLine(
-          data.todayLabel,
-          data.monthLabel,
-          data.monthCompletedCount,
-          data.monthScheduledCount
-        )}
+        description={DASHBOARD_COPY.contextLine(data.todayLabel, data.today.length)}
         actions={
           <Button
-            variant="outline"
             nativeButton={false}
             render={<Link href={data.calendarHref} />}
           >
@@ -70,6 +66,9 @@ export default async function DashboardPage() {
           </Button>
         }
       />
+
+      {/* Only while they are still on the password somebody else chose. */}
+      {profile && !profile.passwordSetAt && <TemporaryPasswordNotice />}
 
       {/* The month at a glance, each figure from a real count. */}
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -91,9 +90,9 @@ export default async function DashboardPage() {
           label={DASHBOARD_COPY.overviewActiveStudents}
           value={data.studentCounts.ACTIVE}
           detail={
-            data.studentCounts.TRIAL > 0
-              ? DASHBOARD_COPY.overviewTrialDetail(data.studentCounts.TRIAL)
-              : "no trial students"
+            data.studentCounts.PAUSED > 0
+              ? DASHBOARD_COPY.overviewPausedDetail(data.studentCounts.PAUSED)
+              : "none paused"
           }
           tone="blue"
           icon={Users}
@@ -107,71 +106,80 @@ export default async function DashboardPage() {
       </div>
 
       {/*
-        Two bands of the same shape: the wide half carries what you act on — the
-        month's activity, then anything unresolved — and the narrow half carries
-        what you read — today, then money. Everything else lives on the calendar
-        and the list pages; repeating it here only made the page harder to read.
+        Two stacked columns rather than a flowing grid. With a grid, a card that
+        renders conditionally left the next one stranded beside empty space —
+        the money panel sat alone in a third of the page. As two columns each
+        holding their own stack, the page is symmetrical whatever renders: what
+        you act on down the left, what you read down the right.
       */}
-      <div className="grid items-start gap-5 lg:grid-cols-3">
-        <DashboardCard
-          className="lg:col-span-2"
-          title={DASHBOARD_COPY.activityTitle}
-          description={DASHBOARD_COPY.activityDescription(data.monthLabel)}
-        >
-          <ActivityChart weeks={data.activityWeeks} summary={data.activitySummary} />
-        </DashboardCard>
-
-        <DashboardCard
-          title={DASHBOARD_COPY.todayTitle}
-          description={
-            data.today.length === 0
-              ? data.todayLabel
-              : `${data.todayLabel} · ${DASHBOARD_COPY.todayCount(data.today.length)}`
-          }
-          action={
-            <Link
-              href={data.calendarHref}
-              className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
-            >
-              View calendar <ChevronRight aria-hidden="true" className="size-3.5" />
-            </Link>
-          }
-          bodyClassName="p-0"
-        >
-          {data.today.length === 0 ? (
-            <p className="px-5 pb-5 text-sm text-muted-foreground">
-              {DASHBOARD_COPY.todayEmpty}
-            </p>
-          ) : (
-            <SessionList sessions={data.today} showDate={false} />
-          )}
-        </DashboardCard>
-
-        {/*
-          Only rendered when something is actually unresolved. An empty
-          "nothing to do" panel every day is noise on the one section that is
-          supposed to mean work.
-        */}
-        {data.needCompletion.length > 0 && (
+      {/*
+        `grid-cols-1` on a phone, never an implicit track: an implicit column is
+        sized to its widest content, and one long row in a list is then enough to
+        make the whole page wider than the screen. `min-w-0` lets each column
+        shrink below its content so truncation, not overflow, handles it.
+      */}
+      <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-3">
+        <div className="min-w-0 space-y-5 lg:col-span-2">
           <DashboardCard
-            className="lg:col-span-2"
-            title={DASHBOARD_COPY.attentionTitle}
-            description={DASHBOARD_COPY.attentionDescription}
-            icon={<Bell aria-hidden="true" className="size-4" />}
+            title={DASHBOARD_COPY.activityTitle}
+            description={DASHBOARD_COPY.activityDescription(data.monthLabel)}
+          >
+            <ActivityChart weeks={data.activityWeeks} summary={data.activitySummary} />
+          </DashboardCard>
+
+          {/*
+            Only rendered when something is actually unresolved. An empty
+            "nothing to do" panel every day is noise on the one section that is
+            supposed to mean work.
+          */}
+          {data.needCompletion.length > 0 && (
+            <DashboardCard
+              title={DASHBOARD_COPY.attentionTitle}
+              description={DASHBOARD_COPY.attentionDescription}
+              icon={<Bell aria-hidden="true" className="size-4" />}
+              bodyClassName="p-0"
+            >
+              <SessionList sessions={data.needCompletion} showDate />
+              {data.needCompletionCount > data.needCompletion.length && (
+                <p className="px-5 py-3 text-xs text-muted-foreground">
+                  {DASHBOARD_COPY.attentionMore(
+                    data.needCompletionCount - data.needCompletion.length
+                  )}
+                </p>
+              )}
+            </DashboardCard>
+          )}
+        </div>
+
+        <div className="min-w-0 space-y-5">
+          <DashboardCard
+            title={DASHBOARD_COPY.todayTitle}
+            description={
+              data.today.length === 0
+                ? data.todayLabel
+                : `${data.todayLabel} · ${DASHBOARD_COPY.todayCount(data.today.length)}`
+            }
+            action={
+              <Link
+                href={data.calendarHref}
+                className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+              >
+                View calendar <ChevronRight aria-hidden="true" className="size-3.5" />
+              </Link>
+            }
             bodyClassName="p-0"
           >
-            <SessionList sessions={data.needCompletion} showDate />
-            {data.needCompletionCount > data.needCompletion.length && (
-              <p className="px-5 py-3 text-xs text-muted-foreground">
-                {DASHBOARD_COPY.attentionMore(
-                  data.needCompletionCount - data.needCompletion.length
-                )}
+            {data.today.length === 0 ? (
+              <p className="px-5 pb-5 text-sm text-muted-foreground">
+                {DASHBOARD_COPY.todayEmpty}
               </p>
+            ) : (
+              <SessionList sessions={data.today} showDate={false} />
             )}
           </DashboardCard>
-        )}
 
-        <FinanceSection snapshot={finance} />
+          <FinanceSection snapshot={finance} />
+        </div>
       </div>
     </PageContainer>
   );
@@ -207,10 +215,10 @@ function SessionList({
                   {showDate ? session.dateLabel : session.startLabel}
                 </span>
               )}
-              <InitialsAvatar name={session.studentName} className="hidden sm:inline-flex" />
+              <InitialsAvatar name={session.title} className="hidden sm:inline-flex" />
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-medium group-hover:underline">
-                  {session.studentName}
+                  {session.title}
                 </span>
                 <span className="block truncate text-xs text-muted-foreground">
                   {compact && showDate ? `${session.dateLabel} · ` : ""}

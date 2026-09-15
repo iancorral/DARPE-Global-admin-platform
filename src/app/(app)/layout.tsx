@@ -1,9 +1,28 @@
-import { requireUser } from "@/lib/auth";
+import { redirect } from "next/navigation";
+import { getCurrentUser, getSignedInEmail } from "@/lib/auth";
 import { AppSidebar } from "@/components/shared/app-sidebar";
+import { AppContent } from "@/components/shared/app-content";
+import { NoProfile } from "@/features/auth/components/no-profile";
 import { Toaster } from "@/components/ui/sonner";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const user = await requireUser();
+  const user = await getCurrentUser();
+
+  /*
+   * Two different failures, told apart rather than both redirecting.
+   *
+   * No session at all is ordinary: go and sign in. A valid session with no
+   * `Profile` row is a setup mistake — an account added in Supabase Auth
+   * without the app's own identity record — and redirecting it to /login was an
+   * infinite loop, because the session guard would immediately send it back
+   * here. It gets a screen that says so instead.
+   */
+  if (!user) {
+    const email = await getSignedInEmail();
+    if (email) return <NoProfile email={email} />;
+
+    redirect("/login");
+  }
 
   return (
     /*
@@ -18,10 +37,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
      * removes the dependency: there is no document height left to grow.
      */
     <div className="fixed inset-0 flex flex-col overflow-hidden lg:flex-row">
-      <AppSidebar userName={user.name} userRole={user.role} />
-      <main className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-(--app-nav-space) lg:pb-0">
-        {children}
-      </main>
+      <AppSidebar userName={user.name} userRole={user.role} userEmail={user.email} />
+      <AppContent>{children}</AppContent>
       {/*
         Every mutation reports through `toast`, and without this mounted none
         of those messages ever reached the screen — successes and failures

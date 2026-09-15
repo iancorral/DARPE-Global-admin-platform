@@ -81,9 +81,21 @@ export function FinanceSection({ snapshot }: { snapshot: FinanceSnapshot | null 
           )}
         </div>
 
-        <div className="mt-3">
-          <RevenueChart points={snapshot.monthlyRevenue} currency={snapshot.currency} />
-        </div>
+        {/*
+          A line of zeroes is not a chart — it drew a flat rule along the bottom
+          of an empty box and read as a rendering fault. Until there is money to
+          plot, the panel says so in one line.
+        */}
+        {snapshot.monthlyRevenue.some((point) => point.amountCents > 0) ? (
+          <div className="mt-3">
+            <RevenueChart points={snapshot.monthlyRevenue} currency={snapshot.currency} />
+          </div>
+        ) : (
+          <p className="mt-3 rounded-lg border border-dashed px-3 py-4 text-xs text-muted-foreground">
+            No payments recorded in the last six months. The chart fills in as payments
+            are recorded.
+          </p>
+        )}
 
         <p className="mt-3 border-t pt-3 text-xs text-muted-foreground">
           Owed to teachers{" "}

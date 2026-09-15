@@ -20,15 +20,21 @@ describe("greetingForHour", () => {
 });
 
 describe("contextLine", () => {
-  it("reports the month's taught and scheduled classes", () => {
-    expect(DASHBOARD_COPY.contextLine("Saturday, August 15", "August", 24, 18)).toBe(
-      "Saturday, August 15 · 24 classes taught in August, 18 still scheduled."
+  it("says the date and what today holds", () => {
+    expect(DASHBOARD_COPY.contextLine("Saturday, August 15", 6)).toBe(
+      "Saturday, August 15 · 6 classes today"
     );
   });
 
   it("keeps a single class singular", () => {
-    expect(DASHBOARD_COPY.contextLine("Sunday, August 2", "August", 1, 0)).toBe(
-      "Sunday, August 2 · 1 class taught in August, 0 still scheduled."
+    expect(DASHBOARD_COPY.contextLine("Sunday, August 2", 1)).toBe(
+      "Sunday, August 2 · 1 class today"
+    );
+  });
+
+  it("says an empty day in words rather than as a zero", () => {
+    expect(DASHBOARD_COPY.contextLine("Sunday, August 2", 0)).toBe(
+      "Sunday, August 2 · nothing scheduled today"
     );
   });
 });

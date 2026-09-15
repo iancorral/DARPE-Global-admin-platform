@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { DateField } from "@/components/shared/date-field";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -240,12 +241,19 @@ export function ScheduleManager({ studentId, slots, teachers }: Props) {
 
               <div className="space-y-2">
                 <Label>Starts on</Label>
-                <Input type="date" value={startsOn} onChange={(e) => setStartsOn(e.target.value)} />
+                <DateField value={startsOn} onChange={setStartsOn} ariaLabel="Starts on" />
               </div>
 
               <div className="space-y-2">
                 <Label>Ends on (optional)</Label>
-                <Input type="date" value={endsOn} onChange={(e) => setEndsOn(e.target.value)} />
+                <DateField
+                  value={endsOn}
+                  onChange={setEndsOn}
+                  min={startsOn}
+                  clearable
+                  placeholder="No end date"
+                  ariaLabel="Ends on"
+                />
               </div>
             </div>
 

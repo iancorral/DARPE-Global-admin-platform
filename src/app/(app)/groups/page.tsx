@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Plus, Users } from "lucide-react";
+import { AlertTriangle, Plus, Users } from "lucide-react";
 import { getGroupRows } from "@/features/groups/queries";
 import { EmptyState } from "@/components/shared/empty-state";
 import { LanguageChip } from "@/components/shared/identity";
@@ -60,6 +60,14 @@ export default async function GroupsPage() {
                     <p className="truncate text-xs text-muted-foreground">
                       {group.teacherName}
                     </p>
+                    {group.active && !group.teacherActive && (
+                      // Nothing else on the card would show it, and a group
+                      // whose teacher has left produces no classes at all.
+                      <p className="mt-1 flex items-center gap-1 text-xs font-medium text-tone-amber-fg">
+                        <AlertTriangle aria-hidden="true" className="size-3.5 shrink-0" />
+                        Teacher has left — needs a new one
+                      </p>
+                    )}
                   </div>
                   <Badge variant={group.active ? "default" : "outline"}>
                     {group.active ? "Active" : "Closed"}

@@ -6,6 +6,12 @@ import {
   type BusinessHours,
 } from "@/features/sessions/business-hours";
 import { ACADEMY_SETTINGS_ID } from "./constants";
+import {
+  COURSE_PRICES,
+  resolveCoursePrices,
+  type CoursePrice,
+} from "@/features/finance/pricing";
+import type { Modality } from "@/generated/prisma/client";
 
 export type LanguageRow = {
   id: string;
@@ -86,4 +92,30 @@ export async function getTeachingHours(): Promise<BusinessHours> {
     startHour: settings.dayStartHour,
     endHour: settings.dayEndHour,
   };
+}
+
+/**
+ * The current list price of every course.
+ *
+ * Staff's edits from Settings laid over the published table; a modality nobody
+ * has touched keeps its published figure. Degrades to the published table on
+ * P2021 for the same reason `getTeachingHours` does — the payments screen has
+ * to render on a database that has not run the migration yet.
+ */
+export async function getCoursePrices(): Promise<Record<Modality, CoursePrice>> {
+  try {
+    const overrides = await db.coursePrice.findMany({
+      select: { modality: true, mxnCents: true, usdCents: true },
+    });
+
+    return resolveCoursePrices(overrides);
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2021"
+    ) {
+      return COURSE_PRICES;
+    }
+    throw error;
+  }
 }

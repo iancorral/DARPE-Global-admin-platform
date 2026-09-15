@@ -17,16 +17,32 @@ import {
   calendarReturnUrl,
   type CalendarReturnContext,
 } from "@/features/sessions/calendar-return";
-import { FormActions, FormCard, FormSection } from "@/components/shared/page";
-import { createStudent, updateStudent } from "../actions";
+import { AtSign, GraduationCap, UserRound } from "lucide-react";
+import { FormActions, FormCard, FormLayout, FormSection } from "@/components/shared/page";
+import {
+  SimilarRecords,
+  SimilarRecordsInline,
+} from "@/features/directory/components/similar-records";
+import type { DirectoryEntry } from "@/features/directory/similar";
+import { createStudent } from "../actions";
 import {
   studentFormSchema,
+  BILLING_STATUSES,
+  BILLING_STATUS_HINTS,
+  BILLING_STATUS_LABELS,
   MODALITIES,
+  STUDENT_LEVELS,
   STUDENT_STATUSES,
   STUDENT_STATUS_LABELS,
   type StudentFormInput,
 } from "../schemas";
 import { fullName } from "@/lib/names";
+
+/** "Not set" is a real choice: DARPE has no level on file for most students. */
+const LEVEL_ITEMS: { label: string; value: string }[] = [
+  { label: "Not set", value: "" },
+  ...STUDENT_LEVELS.map((level) => ({ label: level, value: level })),
+];
 
 const MODALITY_LABELS: Record<(typeof MODALITIES)[number], string> = {
   ADVISORY: "Advisory (per hour)",
@@ -37,11 +53,7 @@ const MODALITY_LABELS: Record<(typeof MODALITIES)[number], string> = {
 
 type Props = {
   languages: { id: string; name: string }[];
-  /**
-   * Active teachers, plus — when editing — the student's current primary teacher
-   * even if they have gone inactive, so opening the form never silently drops an
-   * assignment that is still on the record.
-   */
+  /** Active teachers, narrowed to the chosen language as it is picked. */
   teachers: {
     id: string;
     firstName: string;
@@ -55,56 +67,47 @@ type Props = {
    * scheduling fields — only where it goes afterwards.
    */
   calendarReturn?: CalendarReturnContext | null;
-  /**
-   * When present, the form edits this student instead of creating one. The same
-   * fields and the same schema; only the action and the destination change.
-   */
-  student?: { id: string } & StudentFormInput;
+  /** Every student on record, newest first, to catch a duplicate while typing. */
+  existing: DirectoryEntry[];
 };
 
-export function StudentForm({ languages, teachers, calendarReturn, student }: Props) {
+/**
+ * Creating a student. Editing one happens on the student's own page, field by
+ * field — see `inline-field.tsx`.
+ */
+export function StudentForm({ languages, teachers, calendarReturn, existing }: Props) {
   const router = useRouter();
 
   const form = useForm<StudentFormInput>({
     resolver: zodResolver(studentFormSchema),
-    defaultValues: student ?? {
+    defaultValues: {
       firstName: "", lastName: "", email: "", phone: "",
       languageId: "", primaryTeacherId: "", modality: "INDIVIDUAL_EXTENSIVE",
-      status: "ACTIVE", level: "", goal: "",
+      status: "ACTIVE", billing: "PENDING", level: "", goal: "",
     },
   });
 
   // `useWatch` rather than `form.watch()`: the subscription is memoizable, so
   // only this field's changes re-render the list below.
   const languageId = useWatch({ control: form.control, name: "languageId" });
+  const [firstName, lastName] = useWatch({
+    control: form.control,
+    name: ["firstName", "lastName"],
+  });
+  const nameQuery = `${firstName ?? ""} ${lastName ?? ""}`;
 
   /*
    * Only teachers who teach the language chosen above, because a teacher who
    * does not is refused by the server anyway — offering them just invites an
-   * error. A teacher already assigned is kept whatever their languages say, so
-   * opening an existing student never silently drops their teacher.
+   * error.
    */
   const eligibleTeachers = teachers.filter((teacher) => {
-    if (teacher.id === student?.primaryTeacherId) return true;
     if (!languageId || !teacher.languageIds) return true;
 
     return teacher.languageIds.includes(languageId);
   });
 
   async function onSubmit(values: StudentFormInput) {
-    if (student) {
-      const result = await updateStudent({ id: student.id, ...values });
-
-      if (!result.success) {
-        toast.error(result.error);
-        return;
-      }
-
-      toast.success("Student updated");
-      router.push(`/students/${student.id}`);
-      return;
-    }
-
     const result = await createStudent(values);
 
     if (!result.success) {
@@ -121,6 +124,16 @@ export function StudentForm({ languages, teachers, calendarReturn, student }: Pr
   }
 
   return (
+    <FormLayout
+      aside={
+        <SimilarRecords
+          query={nameQuery}
+          entries={existing}
+          noun={{ singular: "student", plural: "students" }}
+          className="hidden lg:block"
+        />
+      }
+    >
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)}>
         {calendarReturn && (
@@ -131,7 +144,7 @@ export function StudentForm({ languages, teachers, calendarReturn, student }: Pr
         )}
 
         <FormCard>
-        <FormSection title="Who they are" description="The name staff will search for.">
+        <FormSection title="Who they are" icon={UserRound} tone="violet">
         <div className="grid gap-4 sm:grid-cols-2">
           <FormField control={form.control} name="firstName" render={({ field }) => (
             <FormItem>
@@ -148,11 +161,13 @@ export function StudentForm({ languages, teachers, calendarReturn, student }: Pr
             </FormItem>
           )} />
         </div>
+        <SimilarRecordsInline query={nameQuery} entries={existing} className="lg:hidden" />
         </FormSection>
 
         <FormSection
           title="Contact"
-          description="Optional. Kept internal — never shown outside the admin."
+          icon={AtSign}
+          tone="blue"
         >
         <div className="grid gap-4 sm:grid-cols-2">
           <FormField control={form.control} name="email" render={({ field }) => (
@@ -174,7 +189,8 @@ export function StudentForm({ languages, teachers, calendarReturn, student }: Pr
 
         <FormSection
           title="What they study"
-          description="Decides who can teach them and where they appear on the calendar."
+          icon={GraduationCap}
+          tone="teal"
         >
         <div className="grid gap-4 sm:grid-cols-2">
         <FormField control={form.control} name="languageId" render={({ field }) => (
@@ -224,7 +240,7 @@ export function StudentForm({ languages, teachers, calendarReturn, student }: Pr
             <p className="text-xs text-muted-foreground">
               {languageId
                 ? "Only teachers who teach this language."
-                : "Choose a language first to narrow this list."}
+                : "Choose a language first."}
             </p>
             <FormMessage />
           </FormItem>
@@ -271,23 +287,61 @@ export function StudentForm({ languages, teachers, calendarReturn, student }: Pr
                 ))}
               </SelectContent>
             </Select>
+            <FormMessage />
+          </FormItem>
+        )} />
+
+        <FormField control={form.control} name="billing" render={({ field }) => (
+          <FormItem>
+            <FormLabel>Payment</FormLabel>
+            <Select
+                items={BILLING_STATUSES.map((b) => ({
+                  label: BILLING_STATUS_LABELS[b],
+                  value: b,
+                }))}
+                onValueChange={field.onChange}
+                value={field.value}
+                >
+              <FormControl>
+                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+              </FormControl>
+              <SelectContent>
+                {BILLING_STATUSES.map((b) => (
+                  <SelectItem key={b} value={b}>{BILLING_STATUS_LABELS[b]}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <p className="text-xs text-muted-foreground">
-              Only active and trial students can be given new classes. Existing classes
-              are kept either way.
+              {BILLING_STATUS_HINTS[field.value]}
             </p>
             <FormMessage />
           </FormItem>
         )} />
 
-        </div>
-
         <FormField control={form.control} name="level" render={({ field }) => (
           <FormItem>
             <FormLabel>Level <span className="text-muted-foreground">(optional)</span></FormLabel>
-            <FormControl><Input placeholder="A1, B2, Beginner..." {...field} /></FormControl>
+            <Select
+                items={LEVEL_ITEMS}
+                onValueChange={field.onChange}
+                value={field.value ?? ""}
+                >
+              <FormControl>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Not set" />
+                </SelectTrigger>
+              </FormControl>
+              <SelectContent>
+                {LEVEL_ITEMS.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <FormMessage />
           </FormItem>
         )} />
+
+        </div>
 
         <FormField control={form.control} name="goal" render={({ field }) => (
           <FormItem>
@@ -301,11 +355,7 @@ export function StudentForm({ languages, teachers, calendarReturn, student }: Pr
 
         <FormActions>
           <Button type="submit" disabled={form.formState.isSubmitting}>
-            {form.formState.isSubmitting
-              ? "Saving..."
-              : student
-                ? "Save changes"
-                : "Create student"}
+            {form.formState.isSubmitting ? "Saving..." : "Create student"}
           </Button>
           <Button
             type="button"
@@ -320,5 +370,6 @@ export function StudentForm({ languages, teachers, calendarReturn, student }: Pr
         </FormCard>
       </form>
     </Form>
+    </FormLayout>
   );
 }

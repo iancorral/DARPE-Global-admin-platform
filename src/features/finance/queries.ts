@@ -4,7 +4,21 @@ import { DEFAULT_TIMEZONE, formatDateOnly, formatInZone, parseDateOnly } from "@
 import { dashboardWindows } from "@/features/dashboard/windows";
 import { fullName } from "@/lib/names";
 import { teachingLoad, totalByCurrency, type CurrencyTotal, type TeachingLoad } from "./money";
-import type { Currency, PaymentMethod } from "@/generated/prisma/client";
+import { coursePriceCents, planLabel } from "./pricing";
+import {
+  financeMonthNav,
+  monthStartOf,
+  monthsEndingAt,
+  shiftMonthStart,
+} from "./months";
+import { getCoursePrices } from "@/features/settings/queries";
+import type {
+  BillingStatus,
+  Currency,
+  Modality,
+  PaymentMethod,
+  StudentStatus,
+} from "@/generated/prisma/client";
 
 export type PaymentRow = {
   id: string;
@@ -154,46 +168,68 @@ export async function getTeacherPeriods(
 
 export type FinanceOverview = {
   monthLabel: string;
+  /** Just the month's name, for a sentence that already carries the year. */
+  monthNameLabel: string;
   monthStartDate: string;
   monthEndDate: string;
-  /** Received this academy month, per currency. */
+  /** Received in the selected month, per currency. */
   monthReceived: CurrencyTotal[];
   previousMonthReceived: CurrencyTotal[];
-  /** By how the money arrived, this month. */
+  /** By how the money arrived, in the selected month. */
   byMethod: { method: PaymentMethod; totals: CurrencyTotal[] }[];
-  /** The last six months, oldest first. */
+  /** Six months ending at the selected one, oldest first. */
   monthly: { monthStart: string; label: string; totals: CurrencyTotal[] }[];
   paymentCount: number;
-  /** Payouts still owed, whatever period they belong to. */
+  /**
+   * Payouts still owed, whatever period they belong to.
+   *
+   * Deliberately **not** scoped to the selected month: "still owed" is a fact
+   * about now, and making it move with the pager would invent a figure for what
+   * was owed in August, which nothing records.
+   */
   unpaidPayouts: PayoutRow[];
+  /** Where the month pager may go. Null means there is nothing that way. */
+  previousMonthStart: string | null;
+  nextMonthStart: string | null;
+  /** True when the selected month is the one happening now. */
+  isCurrentMonth: boolean;
 };
-
-/** First day of the month `back` months before a YYYY-MM-DD date. */
-function shiftMonth(monthStartDate: string, back: number): string {
-  const year = Number(monthStartDate.slice(0, 4));
-  const month = Number(monthStartDate.slice(5, 7));
-  const zeroBased = year * 12 + (month - 1) - back;
-
-  return `${Math.floor(zeroBased / 12)}-${String((zeroBased % 12) + 1).padStart(2, "0")}-01`;
-}
 
 const MONTHS_SHOWN = 6;
 
 /**
- * Everything the finance screen shows, all of it money actually received.
+ * Everything the finance screen shows for one month, all of it money received.
+ *
+ * The month is a parameter rather than always today's: staff close a month
+ * after it ends, so the screen has to be able to look back at one. Which months
+ * can be reached is decided by `financeMonthNav` from the payments on record,
+ * so the pager never walks into empty years in either direction.
+ *
+ * A **calendar** month, which is an assumption worth naming: if DARPE closes
+ * its books on some other day, every figure here shifts and this is the
+ * function that would change. Nothing else encodes a period.
  *
  * There is no "outstanding" figure here on purpose: it would need what each
  * student is expected to pay and when, and DARPE has not settled that. A number
  * invented to fill the space would be worse than its absence.
  */
-export async function getFinanceOverview(now: Date = new Date()): Promise<FinanceOverview> {
-  const windows = dashboardWindows(now, DEFAULT_TIMEZONE);
-  const monthStartDate = windows.monthStartDate;
-  const earliest = shiftMonth(monthStartDate, MONTHS_SHOWN - 1);
+export async function getFinanceOverview(
+  options: { monthStart?: string; now?: Date } = {}
+): Promise<FinanceOverview> {
+  const windows = dashboardWindows(options.now ?? new Date(), DEFAULT_TIMEZONE);
+  const currentMonthStart = windows.monthStartDate;
+  const monthStartDate = options.monthStart ?? currentMonthStart;
 
-  const [payments, unpaid] = await Promise.all([
+  const windowStart = shiftMonthStart(monthStartDate, -(MONTHS_SHOWN - 1));
+  const nextMonth = shiftMonthStart(monthStartDate, 1);
+
+  const [payments, unpaid, span] = await Promise.all([
     db.payment.findMany({
-      where: { receivedOn: { gte: parseDateOnly(earliest) } },
+      // Bounded at both ends now that the month can be any month: the chart
+      // needs the five months before the selected one and nothing after it.
+      where: {
+        receivedOn: { gte: parseDateOnly(windowStart), lt: parseDateOnly(nextMonth) },
+      },
       select: { amountCents: true, currency: true, method: true, receivedOn: true },
     }),
     db.teacherPayout.findMany({
@@ -212,43 +248,54 @@ export async function getFinanceOverview(now: Date = new Date()): Promise<Financ
       },
       orderBy: { periodStart: "desc" },
     }),
+    // The whole history's outer edges, which is what bounds the pager. One
+    // aggregate rather than loading payments nobody is going to show.
+    db.payment.aggregate({ _min: { receivedOn: true }, _max: { receivedOn: true } }),
   ]);
 
   /** The first of the month a payment falls in, as YYYY-MM-DD. */
-  const monthOf = (date: Date) => `${formatDateOnly(date).slice(0, 7)}-01`;
+  const monthOf = (date: Date) => monthStartOf(formatDateOnly(date));
 
-  const thisMonth = payments.filter((p) => monthOf(p.receivedOn) === monthStartDate);
+  const selectedMonth = payments.filter((p) => monthOf(p.receivedOn) === monthStartDate);
   const previousMonth = payments.filter(
-    (p) => monthOf(p.receivedOn) === shiftMonth(monthStartDate, 1)
+    (p) => monthOf(p.receivedOn) === shiftMonthStart(monthStartDate, -1)
   );
 
-  const methods = [...new Set(thisMonth.map((p) => p.method))].sort();
+  const methods = [...new Set(selectedMonth.map((p) => p.method))].sort();
 
-  const monthly = Array.from({ length: MONTHS_SHOWN }, (_, index) => {
-    const monthStart = shiftMonth(monthStartDate, MONTHS_SHOWN - 1 - index);
+  const monthly = monthsEndingAt(monthStartDate, MONTHS_SHOWN).map((monthStart) => ({
+    monthStart,
+    label: formatInZone(parseDateOnly(monthStart), "UTC", "MMM"),
+    totals: totalByCurrency(payments.filter((p) => monthOf(p.receivedOn) === monthStart)),
+  }));
 
-    return {
-      monthStart,
-      label: formatInZone(parseDateOnly(monthStart), "UTC", "MMM"),
-      totals: totalByCurrency(payments.filter((p) => monthOf(p.receivedOn) === monthStart)),
-    };
+  const nav = financeMonthNav({
+    selected: monthStartDate,
+    currentMonthStart,
+    earliestMonthStart: span._min.receivedOn
+      ? monthOf(span._min.receivedOn)
+      : null,
+    latestMonthStart: span._max.receivedOn ? monthOf(span._max.receivedOn) : null,
   });
 
-  // Last day of the month, for the payments list's default range.
-  const monthEndDate = formatDateOnly(new Date(windows.nextMonthStart.getTime() - 86_400_000));
+  // Last day of the selected month, for the payments list's default range.
+  const monthEndDate = formatDateOnly(
+    new Date(parseDateOnly(nextMonth).getTime() - 86_400_000)
+  );
 
   return {
-    monthLabel: formatInZone(windows.monthStart, DEFAULT_TIMEZONE, "MMMM yyyy"),
+    monthLabel: formatInZone(parseDateOnly(monthStartDate), "UTC", "MMMM yyyy"),
+    monthNameLabel: formatInZone(parseDateOnly(monthStartDate), "UTC", "MMMM"),
     monthStartDate,
     monthEndDate,
-    monthReceived: totalByCurrency(thisMonth),
+    monthReceived: totalByCurrency(selectedMonth),
     previousMonthReceived: totalByCurrency(previousMonth),
     byMethod: methods.map((method) => ({
       method,
-      totals: totalByCurrency(thisMonth.filter((p) => p.method === method)),
+      totals: totalByCurrency(selectedMonth.filter((p) => p.method === method)),
     })),
     monthly,
-    paymentCount: thisMonth.length,
+    paymentCount: selectedMonth.length,
     unpaidPayouts: unpaid.map((payout) => ({
       id: payout.id,
       teacherId: payout.teacherId,
@@ -261,7 +308,78 @@ export async function getFinanceOverview(now: Date = new Date()): Promise<Financ
       method: payout.method,
       notes: payout.notes,
     })),
+    previousMonthStart: nav.previous,
+    nextMonthStart: nav.next,
+    isCurrentMonth: monthStartDate === currentMonthStart,
   };
+}
+
+export type StudentBillingRow = {
+  id: string;
+  name: string;
+  languageName: string;
+  teacherName: string | null;
+  modality: Modality;
+  planLabel: string;
+  /** List price of their course. Not an amount owed — see `pricing.ts`. */
+  priceCents: number;
+  currency: Currency;
+  status: StudentStatus;
+  billing: BillingStatus;
+  payMethod: PaymentMethod | null;
+};
+
+/**
+ * Every studying student and what their course costs.
+ *
+ * There are no invoices here, and there will not be until DARPE says there
+ * are: what a student pays is *inferred* from the plan they are on. Archived
+ * students are left out — they are not on a course.
+ *
+ * Currency is a guess the app is honest about: DARPE charges students outside
+ * Mexico in dollars, but nothing records where a student is, so everyone shows
+ * the peso price until a payment in dollars proves otherwise.
+ */
+export async function getStudentBilling(): Promise<StudentBillingRow[]> {
+  const prices = await getCoursePrices();
+  const students = await db.student.findMany({
+    where: { status: { not: "ARCHIVED" } },
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      modality: true,
+      status: true,
+      billing: true,
+      payMethod: true,
+      language: { select: { name: true } },
+      primaryTeacher: { select: { firstName: true, lastName: true } },
+      payments: {
+        select: { currency: true },
+        orderBy: { receivedOn: "desc" },
+        take: 1,
+      },
+    },
+    orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
+  });
+
+  return students.map((student) => {
+    const currency: Currency = student.payments[0]?.currency ?? "MXN";
+
+    return {
+      id: student.id,
+      name: fullName(student),
+      languageName: student.language.name,
+      teacherName: student.primaryTeacher ? fullName(student.primaryTeacher) : null,
+      modality: student.modality,
+      planLabel: planLabel(student.modality),
+      priceCents: coursePriceCents(student.modality, currency, prices),
+      currency,
+      status: student.status,
+      billing: student.billing,
+      payMethod: student.payMethod,
+    };
+  });
 }
 
 /** Students a payment can be recorded against. */

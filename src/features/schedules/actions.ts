@@ -231,7 +231,12 @@ async function findTeacherOccupancy(
           select: {
             id: true,
             languageId: true,
-            members: { select: { studentId: true } },
+            // Only members who are studying, the same rule generation uses, so
+            // the classes a series implies match the ones generation creates.
+            members: {
+              where: { student: { status: { in: ELIGIBLE_STUDENT_STATUSES } } },
+              select: { studentId: true },
+            },
           },
         },
       },
@@ -466,7 +471,13 @@ export async function generateMonthlySessions(
           id: true,
           name: true,
           languageId: true,
-          members: { select: { studentId: true } },
+          // Only members who are studying. Every member used to become a
+          // participant, so a student who had stopped kept appearing in each
+          // newly generated class of their old group.
+          members: {
+            where: { student: { status: { in: ELIGIBLE_STUDENT_STATUSES } } },
+            select: { studentId: true },
+          },
         },
       },
     },

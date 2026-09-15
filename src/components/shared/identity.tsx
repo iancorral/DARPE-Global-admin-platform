@@ -52,12 +52,17 @@ export function LanguageChip({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium",
+        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold",
         tone.chip,
         className
       )}
     >
-      <span aria-hidden="true" className={cn("size-1.5 rounded-full", tone.dot)} />
+      {/*
+        The dot carries the language's colour at full saturation while the chip
+        behind it stays a tint — a fully saturated pill would shout across a
+        table of fifty rows, and a tint alone was too faint to pick out.
+      */}
+      <span aria-hidden="true" className={cn("size-2 rounded-full", tone.dot)} />
       {name}
     </span>
   );

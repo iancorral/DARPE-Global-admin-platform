@@ -1,12 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, CalendarDays, Pencil } from "lucide-react";
-import { getGroupDetail } from "@/features/groups/queries";
+import { ArrowLeft, CalendarDays } from "lucide-react";
+import { getGroupDetail, getGroupFormOptions } from "@/features/groups/queries";
+import { GroupIdentityCard } from "@/features/groups/components/group-identity";
 import { GroupMembers } from "@/features/groups/components/group-members";
 import { GroupSchedule } from "@/features/groups/components/group-schedule";
 import { EmptyState } from "@/components/shared/empty-state";
-import { LanguageChip } from "@/components/shared/identity";
-import { PageContainer, PageHeader, Section } from "@/components/shared/page";
+import { PageContainer, Section } from "@/components/shared/page";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { INTERACTIVE_ROW } from "@/lib/interaction";
@@ -31,7 +31,7 @@ export default async function GroupDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const group = await getGroupDetail(id);
+  const [group, options] = await Promise.all([getGroupDetail(id), getGroupFormOptions()]);
 
   if (!group) notFound();
 
@@ -44,46 +44,33 @@ export default async function GroupDetailPage({
         <ArrowLeft className="size-4" /> All groups
       </Link>
 
-      <PageHeader
-        title={
-          <span className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            {group.name}
-            <Badge variant={group.active ? "default" : "outline"}>
-              {group.active ? "Active" : "Closed"}
-            </Badge>
-          </span>
-        }
-        description={
-          <span className="mt-1 flex flex-wrap items-center gap-2">
-            <LanguageChip name={group.languageName} />
-            <span>{group.teacherName}</span>
-          </span>
-        }
+      <GroupIdentityCard
+        group={{
+          id: group.id,
+          name: group.name,
+          notes: group.notes,
+          active: group.active,
+          memberCount: group.members.length,
+          teacherId: group.teacherId,
+          teacherName: group.teacherName,
+          teacherActive: group.teacherActive,
+          languageId: group.languageId,
+          languageName: group.languageName,
+        }}
+        teachers={options.teachers}
+        languages={options.languages}
         actions={
-          <>
-            <Button
-              variant="outline"
-              nativeButton={false}
-              render={<Link href={`/calendar?teacher=${group.teacherId}`} />}
-            >
-              <CalendarDays className="size-4" /> Open calendar
-            </Button>
-            <Button
-              variant="outline"
-              nativeButton={false}
-              render={<Link href={`/groups/${group.id}/edit`} />}
-            >
-              <Pencil className="size-4" /> Edit
-            </Button>
-          </>
+          <Button
+            variant="outline"
+            nativeButton={false}
+            render={<Link href={`/calendar?teacher=${group.teacherId}`} />}
+          >
+            <CalendarDays className="size-4" /> Open calendar
+          </Button>
         }
       />
 
-      {group.notes && (
-        <p className="mb-6 rounded-xl border bg-card p-4 text-sm shadow-xs">{group.notes}</p>
-      )}
-
-      <div className="space-y-8">
+      <div className="mt-6 space-y-8">
         <Section title="Students" description={`${group.members.length} in this group`}>
           <GroupMembers
             groupId={group.id}

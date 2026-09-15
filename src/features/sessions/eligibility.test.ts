@@ -10,7 +10,7 @@ import {
 } from "./eligibility";
 
 const candidate = (overrides?: {
-  studentStatus?: "ACTIVE" | "TRIAL" | "PAUSED" | "ARCHIVED";
+  studentStatus?: "ACTIVE" | "PAUSED" | "ARCHIVED";
   teacherActive?: boolean;
   teacherLanguageIds?: string[];
 }) => ({
@@ -28,9 +28,8 @@ const candidate = (overrides?: {
 });
 
 describe("isEligibleStudent", () => {
-  it("allows new classes for active and trial students", () => {
+  it("allows new classes for active students", () => {
     expect(isEligibleStudent("ACTIVE")).toBe(true);
-    expect(isEligibleStudent("TRIAL")).toBe(true);
   });
 
   it("refuses new classes for paused and archived students", () => {
@@ -39,7 +38,7 @@ describe("isEligibleStudent", () => {
   });
 
   it("matches the statuses recurring generation uses", () => {
-    expect(ELIGIBLE_STUDENT_STATUSES).toEqual(["ACTIVE", "TRIAL"]);
+    expect(ELIGIBLE_STUDENT_STATUSES).toEqual(["ACTIVE"]);
   });
 });
 
@@ -89,12 +88,6 @@ describe("checkTeacherForLanguage", () => {
 describe("checkManualClassEligibility", () => {
   it("accepts an active student with a teacher of their language", () => {
     expect(checkManualClassEligibility(candidate())).toEqual({ ok: true });
-  });
-
-  it("accepts a trial student", () => {
-    expect(checkManualClassEligibility(candidate({ studentStatus: "TRIAL" }))).toEqual({
-      ok: true,
-    });
   });
 
   it("rejects a paused student and names them", () => {

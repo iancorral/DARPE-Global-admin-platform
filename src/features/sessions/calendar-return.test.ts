@@ -263,7 +263,7 @@ describe("what the round trip preserves", () => {
   const weekly: CalendarReturnContext = {
     ...context,
     mode: "weekly",
-    duration: 45,
+    duration: 90,
     until: "2026-09-16",
   };
 
@@ -290,10 +290,10 @@ describe("what the round trip preserves", () => {
   it("brings a weekly class's duration and repeat-until date back", () => {
     const { returned, intent } = roundTrip(weekly, "student1");
 
-    expect(returned).toMatchObject({ duration: 45, until: "2026-09-16" });
+    expect(returned).toMatchObject({ duration: 90, until: "2026-09-16" });
     expect(intent).toMatchObject({
       mode: "weekly",
-      durationMinutes: 45,
+      durationMinutes: 90,
       endsOn: "2026-09-16",
       studentId: "student1",
     });
@@ -303,7 +303,7 @@ describe("what the round trip preserves", () => {
     const { intent } = roundTrip(weekly);
 
     expect(intent).toMatchObject({
-      durationMinutes: 45,
+      durationMinutes: 90,
       endsOn: "2026-09-16",
       studentId: null,
     });

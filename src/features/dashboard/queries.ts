@@ -18,7 +18,8 @@ export type DashboardSession = {
   /** Link target: the calendar week containing this class. */
   weekHref: string;
   status: ClassStatus;
-  studentName: string;
+  /** The group's name for a group class, otherwise the student's. */
+  title: string;
   teacherName: string;
   languageName: string;
 };
@@ -54,6 +55,7 @@ const SESSION_SELECT = {
   status: true,
   teacher: { select: { firstName: true, lastName: true } },
   language: { select: { name: true } },
+  group: { select: { name: true } },
   participants: {
     select: { student: { select: { firstName: true, lastName: true } } },
     take: 1,
@@ -72,7 +74,7 @@ function toDashboardSession(session: SessionRow): DashboardSession {
     dateLabel: formatInZone(session.startsAt, DEFAULT_TIMEZONE, "EEE, MMM d"),
     weekHref: `/calendar?week=${startOfWeekDate(date)}`,
     status: session.status,
-    studentName: student ? fullName(student) : "Class",
+    title: session.group?.name ?? (student ? fullName(student) : "Class"),
     teacherName: fullName(session.teacher),
     languageName: session.language.name,
   };
@@ -143,7 +145,6 @@ export async function getDashboardData(now: Date = new Date()): Promise<Dashboar
   const needCompletionCount = settledOverdueCount + justEnded.length;
 
   const studentCounts: Record<StudentStatus, number> = {
-    TRIAL: 0,
     ACTIVE: 0,
     PAUSED: 0,
     ARCHIVED: 0,

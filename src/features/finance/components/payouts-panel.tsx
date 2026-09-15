@@ -11,7 +11,10 @@ import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { DataTable } from "@/components/shared/data-table";
+import { EmptyState } from "@/components/shared/empty-state";
 import { InitialsAvatar } from "@/components/shared/identity";
+import { TONE_CLASSES } from "@/lib/tone";
 import { formatAmount, formatHours, PAYMENT_METHODS, PAYMENT_METHOD_LABELS } from "../money";
 import { savePayout, settlePayout } from "../actions";
 import type { TeacherPeriod } from "../queries";
@@ -20,19 +23,24 @@ import type { TeacherPeriod } from "../queries";
  * Who has been paid for this period, and who has not.
  *
  * The hours come from completed classes and cannot be edited here — they are
- * what the calendar says was taught. The amount is typed in, because DARPE
- * already knows its own rates and the rule for a cancelled class is not settled
- * yet. What the product contributes is the record of settlement.
+ * what the calendar says was taught. The amount is typed in, because DARPE pays
+ * per finished course and staff already know their own figures. What the
+ * product contributes is the record of settlement.
+ *
+ * A teacher with no classes still gets a row: a zero is how staff know the
+ * period was checked rather than forgotten.
  */
 export function PayoutsPanel({
   periods,
   periodStart,
   periodEnd,
+  periodLabel,
   today,
 }: {
   periods: TeacherPeriod[];
   periodStart: string;
   periodEnd: string;
+  periodLabel: string;
   today: string;
 }) {
   const router = useRouter();
@@ -89,88 +97,135 @@ export function PayoutsPanel({
   }
 
   return (
-    <ul className="divide-y overflow-hidden rounded-xl border bg-card shadow-xs">
-      {periods.map((period) => (
-        <li key={period.teacherId} className="flex flex-wrap items-center gap-3 px-4 py-3">
-          <InitialsAvatar name={period.teacherName} />
-
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-medium">{period.teacherName}</span>
-            <span className="block truncate text-xs text-muted-foreground">
-              {period.load.classes === 0
-                ? "No classes completed in this period"
-                : `${period.load.classes} classes · ${formatHours(period.load.minutes)} · ` +
-                  `${period.load.individualClasses} individual, ${period.load.groupClasses} group`}
+    <DataTable
+      rows={periods}
+      getKey={(period) => period.teacherId}
+      columns={[
+        {
+          key: "teacher",
+          header: "Teacher",
+          cell: (period) => (
+            <span className="flex items-center gap-3 font-medium">
+              <InitialsAvatar name={period.teacherName} className="size-8" />
+              <span className="truncate">{period.teacherName}</span>
             </span>
-          </span>
-
-          {period.payout ? (
-            <>
-              <span className="text-sm font-medium tabular-nums">
+          ),
+        },
+        {
+          key: "period",
+          header: "Period",
+          width: "14%",
+          cell: () => <span className="text-muted-foreground">{periodLabel}</span>,
+        },
+        {
+          key: "hours",
+          header: "Hours",
+          width: "9%",
+          align: "right",
+          cell: (period) =>
+            period.load.classes === 0 ? (
+              <span className="text-muted-foreground">—</span>
+            ) : (
+              formatHours(period.load.minutes)
+            ),
+        },
+        {
+          key: "classes",
+          header: "Classes",
+          width: "20%",
+          cell: (period) => (
+            <span className="text-muted-foreground">
+              {period.load.classes === 0
+                ? "None completed"
+                : `${period.load.individualClasses} individual · ${period.load.groupClasses} group`}
+            </span>
+          ),
+        },
+        {
+          key: "amount",
+          header: "Amount",
+          width: "17%",
+          align: "right",
+          interactive: true,
+          cell: (period) =>
+            period.payout ? (
+              <span className="font-medium">
                 {formatAmount(period.payout.amountCents, period.payout.currency)}
               </span>
-
-              {period.payout.paidOn ? (
-                <>
-                  <Badge variant="default">
-                    Paid {period.payout.paidOn}
-                    {period.payout.method
-                      ? ` · ${PAYMENT_METHOD_LABELS[period.payout.method]}`
-                      : ""}
-                  </Badge>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    aria-label={`Mark ${period.teacherName} as unpaid`}
-                    disabled={pendingId === period.payout.id}
-                    onClick={() => handleSettle(period.payout!.id, false, "CASH")}
-                  >
-                    <Undo2 className="size-4" />
-                  </Button>
-                </>
-              ) : (
-                <MarkPaid
-                  disabled={pendingId === period.payout.id}
-                  onConfirm={(method) => handleSettle(period.payout!.id, true, method)}
+            ) : (
+              <span className="flex items-center justify-end gap-2">
+                <Input
+                  aria-label={`Amount owed to ${period.teacherName}`}
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  className="h-8 w-24 text-right"
+                  value={drafts[period.teacherId] ?? ""}
+                  onChange={(event) =>
+                    setDrafts((current) => ({
+                      ...current,
+                      [period.teacherId]: event.target.value,
+                    }))
+                  }
                 />
-              )}
-            </>
-          ) : (
-            <span className="flex items-center gap-2">
-              <Input
-                aria-label={`Amount owed to ${period.teacherName}`}
-                inputMode="decimal"
-                placeholder="Amount"
-                className="w-28"
-                value={drafts[period.teacherId] ?? ""}
-                onChange={(event) =>
-                  setDrafts((current) => ({
-                    ...current,
-                    [period.teacherId]: event.target.value,
-                  }))
-                }
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={pendingId === period.teacherId || !drafts[period.teacherId]}
+                  onClick={() => handleSaveAmount(period.teacherId)}
+                >
+                  Save
+                </Button>
+              </span>
+            ),
+        },
+        {
+          key: "status",
+          header: "Status",
+          width: "18%",
+          interactive: true,
+          cell: (period) => {
+            const payout = period.payout;
+
+            if (!payout) return <span className="text-xs text-muted-foreground">Not set</span>;
+
+            return payout.paidOn ? (
+              <span className="flex items-center gap-1.5">
+                <Badge variant="outline" className={TONE_CLASSES.teal.chip}>
+                  Paid {payout.paidOn}
+                </Badge>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  aria-label={`Mark ${period.teacherName} as unpaid`}
+                  disabled={pendingId === payout.id}
+                  onClick={() => handleSettle(payout.id, false, "CASH")}
+                >
+                  <Undo2 className="size-4" />
+                </Button>
+              </span>
+            ) : (
+              <MarkPaid
+                teacherName={period.teacherName}
+                disabled={pendingId === payout.id}
+                onConfirm={(method) => handleSettle(payout.id, true, method)}
               />
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={pendingId === period.teacherId || !drafts[period.teacherId]}
-                onClick={() => handleSaveAmount(period.teacherId)}
-              >
-                Save
-              </Button>
-            </span>
-          )}
-        </li>
-      ))}
-    </ul>
+            );
+          },
+        },
+      ]}
+      empty={<EmptyState>No active teachers yet.</EmptyState>}
+      footer="Hours come from completed classes and cannot be edited here. DARPE pays per finished course, so the amount is entered by hand."
+    />
   );
 }
 
 /** Choosing how a teacher was paid, then confirming — two clicks, not one. */
 function MarkPaid({
+  teacherName,
   disabled,
   onConfirm,
 }: {
+  teacherName: string;
   disabled: boolean;
   onConfirm: (method: string) => void;
 }) {
@@ -178,9 +233,7 @@ function MarkPaid({
 
   return (
     <span className="flex items-center gap-2">
-      <Label className="sr-only" htmlFor="payout-method">
-        How they were paid
-      </Label>
+      <Label className="sr-only">How {teacherName} was paid</Label>
       <Select
         items={PAYMENT_METHODS.map((value) => ({
           label: PAYMENT_METHOD_LABELS[value],
@@ -189,7 +242,7 @@ function MarkPaid({
         value={method}
         onValueChange={(value) => value !== null && setMethod(value)}
       >
-        <SelectTrigger id="payout-method" className="w-32">
+        <SelectTrigger className="h-8 w-28" aria-label={`How ${teacherName} was paid`}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -201,7 +254,7 @@ function MarkPaid({
         </SelectContent>
       </Select>
       <Button size="sm" disabled={disabled} onClick={() => onConfirm(method)}>
-        <Check className="size-4" /> Mark paid
+        <Check className="size-4" /> Pay
       </Button>
     </span>
   );

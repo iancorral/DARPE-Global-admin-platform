@@ -1,7 +1,12 @@
 import "server-only";
 import { db } from "@/lib/db";
 import { DEFAULT_TIMEZONE, formatInZone, startOfWeekDate } from "@/lib/datetime";
-import type { Attendance, ClassStatus, StudentStatus } from "@/generated/prisma/client";
+import type {
+  Attendance,
+  BillingStatus,
+  ClassStatus,
+  StudentStatus,
+} from "@/generated/prisma/client";
 import type { Prisma } from "@/generated/prisma/client";
 import { fullName } from "@/lib/names";
 
@@ -12,6 +17,7 @@ export type StudentListRow = {
   teacherName: string | null;
   level: string | null;
   status: StudentStatus;
+  billing: BillingStatus;
 };
 
 /**
@@ -29,6 +35,7 @@ export async function getStudentRows(): Promise<StudentListRow[]> {
       lastName: true,
       level: true,
       status: true,
+      billing: true,
       language: { select: { name: true } },
       primaryTeacher: { select: { firstName: true, lastName: true } },
     },
@@ -44,6 +51,7 @@ export async function getStudentRows(): Promise<StudentListRow[]> {
       : null,
     level: student.level,
     status: student.status,
+    billing: student.billing,
   }));
 }
 

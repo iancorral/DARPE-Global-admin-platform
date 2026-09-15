@@ -42,6 +42,21 @@ export async function proxy(request: NextRequest) {
   return response;
 }
 
+/*
+ * Everything except static assets and the app's identity files.
+ *
+ * `manifest.webmanifest` has to be excluded: a browser fetches it before
+ * anyone signs in, and while it went through this guard it came back as the
+ * login page's HTML. That does not error anywhere — it just silently means the
+ * app cannot be installed on Android or Windows, and nothing says why.
+ *
+ * `.ico` and `.webmanifest` are covered as extensions too, so an icon added
+ * later is not accidentally put behind the session.
+ */
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
+  // One literal string, not a concatenation: Next parses this at build time
+  // and cannot follow an expression.
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|webmanifest)$).*)",
+  ],
 };

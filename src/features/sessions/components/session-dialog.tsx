@@ -9,8 +9,8 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { DateField } from "@/components/shared/date-field";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -26,6 +26,7 @@ import {
 import { completeSession, setSessionStatus, updateSessionScheduling } from "../actions";
 import { canEditScheduling, canRecordAttendance } from "../lifecycle";
 import { calendarUrl } from "../scheduling";
+import { groupSizeLabel, sessionTitle } from "../session-title";
 import { REQUEST_FAILED_MESSAGE } from "../request-feedback";
 import { StartTimeSelect } from "./start-time-select";
 import { ATTENDANCE_OPTIONS, DURATION_OPTIONS, type AttendanceValue } from "../schemas";
@@ -164,10 +165,10 @@ function SessionDetail({
       teacher.languageIds.includes(session.languageId) || teacher.id === session.teacherId
   );
 
-  const title =
-    session.participants.length > 0
-      ? session.participants.map((participant) => participant.studentName).join(", ")
-      : "Class session";
+  // A group class is titled by its group; its members are listed below, where
+  // attendance is taken.
+  const title = sessionTitle(session);
+  const groupSize = groupSizeLabel(session);
 
   /**
    * Move mode lives in the URL, so starting one is a navigation. It waits for this
@@ -325,6 +326,7 @@ function SessionDetail({
         <DialogTitle>{title}</DialogTitle>
         <DialogDescription>
           {session.languageName} · {session.teacherName}
+          {groupSize && ` · ${groupSize}`}
         </DialogDescription>
       </DialogHeader>
 
@@ -412,12 +414,11 @@ function SessionDetail({
           {isSeriesScope && (
             <div className="space-y-2">
               <Label htmlFor="session-date">New first date</Label>
-              <Input
+              <DateField
                 id="session-date"
-                type="date"
                 value={date}
                 min={session.date}
-                onChange={(e) => setDate(e.target.value)}
+                onChange={setDate}
               />
             </div>
           )}

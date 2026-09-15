@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { EmptyState } from "@/components/shared/empty-state";
-import { Section } from "@/components/shared/page";
+import { DashboardCard } from "@/components/shared/page";
 import { INTERACTIVE_ROW } from "@/lib/interaction";
 import { TONE_CLASSES, languageTone } from "@/lib/tone";
 import { cn } from "@/lib/utils";
@@ -32,9 +32,14 @@ const ATTENDANCE_LABELS = Object.fromEntries(
  * holds the class, where all the actions live.
  */
 export function StudentClasses({ sessions }: { sessions: StudentSessions }) {
+  /*
+   * Cards, matching the schedule panel above them. As bare sections separated
+   * by rules they read as an afterthought under a card, which is exactly what
+   * made the profile look unfinished.
+   */
   return (
-    <>
-      <Section
+    <div className="grid items-start gap-6 lg:grid-cols-2">
+      <DashboardCard
         title="Upcoming classes"
         description={
           sessions.upcomingCount > sessions.upcoming.length
@@ -49,9 +54,9 @@ export function StudentClasses({ sessions }: { sessions: StudentSessions }) {
         ) : (
           <SessionRows rows={sessions.upcoming} showAttendance={false} />
         )}
-      </Section>
+      </DashboardCard>
 
-      <Section
+      <DashboardCard
         title="Class history"
         description={
           sessions.historyCount > sessions.history.length
@@ -66,8 +71,8 @@ export function StudentClasses({ sessions }: { sessions: StudentSessions }) {
         ) : (
           <SessionRows rows={sessions.history} showAttendance />
         )}
-      </Section>
-    </>
+      </DashboardCard>
+    </div>
   );
 }
 
