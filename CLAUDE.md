@@ -871,6 +871,13 @@ Real data (imported 2026-09-12 from DARPE's register workbook):
   the meeting's 09:00 one; the 10:00 one had generated nothing and was deleted
   (`scripts/fixes-2026-09-22.ts`)
 
+**`pnpm build` runs `prisma generate` first.** The client lives in the ignored
+`src/generated/prisma`, and Vercel reuses its cached `node_modules`: on a cached
+install the `postinstall` hook is skipped, so the second deploy failed with
+"Can't resolve '@/generated/prisma/client'" (2026-09-22). Generating in the build
+itself does not depend on the cache. Keep both — `postinstall` is what makes it
+appear after a local `pnpm install`.
+
 **Never run `pnpm build` while `pnpm dev` is running.** Both write `.next/`. On
 2026-09-14 a build during a dev session left the dev server serving stale CSS:
 Ian's iPhone showed the login without its new styles or mascots, while a clean
