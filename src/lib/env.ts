@@ -10,8 +10,15 @@ const envSchema = z.object({
    * Supabase's secret key, server-only. Optional: without it the app runs
    * normally and only account management — adding people, resetting passwords —
    * is unavailable. Never give it a NEXT_PUBLIC_ prefix.
+   *
+   * An empty value means "not set", the same as leaving the line out:
+   * `.env.example` ships it as `SUPABASE_SECRET_KEY=`, and a copied example
+   * used to take the whole app down over a feature it does not need.
    */
-  SUPABASE_SECRET_KEY: z.string().min(1).optional(),
+  SUPABASE_SECRET_KEY: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+    z.string().min(1).optional()
+  ),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
 });
 
