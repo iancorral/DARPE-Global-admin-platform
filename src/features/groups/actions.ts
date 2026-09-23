@@ -296,6 +296,26 @@ export async function deactivateGroupScheduleSlot(id: string): Promise<ActionRes
   return { success: true };
 }
 
+/**
+ * An archived group has no upcoming classes.
+ *
+ * Archiving stops generation, but the month's classes were already generated
+ * and would otherwise stay on the calendar as though the group still ran. The
+ * ones still to come, with no attendance taken, are removed; everything that
+ * already happened stays, with its attendance. Reactivating the group and
+ * generating the month brings the upcoming ones back.
+ */
+async function removeUpcomingGroupClasses(groupId: string) {
+  await db.classSession.deleteMany({
+    where: {
+      groupId,
+      status: "SCHEDULED",
+      startsAt: { gte: new Date() },
+      participants: { none: { attendance: { not: null } } },
+    },
+  });
+}
+
 const quickEditGroupSchema = z.discriminatedUnion("field", [
   z.object({
     id: z.string().min(1),
@@ -369,6 +389,10 @@ export async function quickEditGroup(
       where: { id },
       data: field === "notes" ? { notes: value || null } : { [field]: value },
     });
+
+    if (field === "active" && value === false) {
+      await removeUpcomingGroupClasses(id);
+    }
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       if (error.code === "P2002") {

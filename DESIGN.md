@@ -255,8 +255,8 @@ once and stop reading the label.
 
 | | | | |
 | --- | --- | --- | --- |
-| Spanish **amber** — Spain's gold | English **indigo** — Union Jack navy | French **blue** — the flag blue | Italian **moss** — the green stripe |
-| German **slate** — the black band | Japanese **rose** — the crimson circle | Chinese **clay** — vermilion | Korean **teal** — the taegeuk's blue |
+| Spanish **amber** — Spain's gold | English **teal** — see below | French **blue** — the flag blue | Italian **moss** — the green stripe |
+| German **slate** — the black band | Japanese **rose** — the crimson circle | Chinese **clay** — vermilion | Korean **indigo** — the taegeuk's blue |
 | Swedish **cyan** — its pale blue | | | |
 
 **Where fidelity and distinctness pull against each other, distinctness wins.**
@@ -264,7 +264,15 @@ The whole job of the colour is picking a row out at a glance, and four of these
 flags are mostly red while three are mostly blue. So Japanese takes crimson (its
 flag is a red circle and nothing else) and Chinese the warmer vermilion beside
 it; German goes graphite for the black in its flag rather than becoming a fourth
-red.
+red. English used to be the Union Jack's navy, and beside French blue on a
+calendar that is mostly those two it read as the same colour (2026-09-22) — so
+English, the most common class, took teal, a hue nothing else shares, and Korean
+took the indigo.
+
+**Colour is never alone on the calendar.** Every card that has its column to
+itself also prints the language's two letters (`languageCode` — EN, FR, JA) in
+the language's own foreground, and the legend under the grid repeats them. A
+card sharing its column drops the code, because the name needs the room.
 
 **Violet is deliberately absent.** It is DARPE's own colour, and a language
 wearing it would compete with the interface. Plum stays free to mean "not one of

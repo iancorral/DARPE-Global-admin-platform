@@ -4,15 +4,16 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { Prisma } from "@/generated/prisma/client";
-import { parseDateOnly } from "@/lib/datetime";
+import { DEFAULT_TIMEZONE, parseDateOnly, startOfWeekDate, todayInZone } from "@/lib/datetime";
 import { firstValidationMessage } from "@/features/sessions/schemas";
+import { payWeekEnd } from "./teacher-pay";
+import { teacherWeekPayCents } from "./queries";
 import {
-  deletePaymentSchema,
+  payTeacherWeekSchema,
   recordPaymentSchema,
-  savePayoutSchema,
   settlePayoutSchema,
+  type PayTeacherWeekInput,
   type RecordPaymentInput,
-  type SavePayoutInput,
   type SettlePayoutInput,
 } from "./schemas";
 
@@ -28,7 +29,12 @@ function revalidateMoney() {
   revalidatePath("/dashboard");
 }
 
-/** Records money received from a student. */
+/**
+ * Records money received from a student, in pesos.
+ *
+ * A payment in another currency is stored at its peso value — the figure every
+ * total adds up — with what was actually paid and the rate kept beside it.
+ */
 export async function recordPayment(input: RecordPaymentInput): Promise<ActionResult> {
   await requireUser();
 
@@ -40,17 +46,20 @@ export async function recordPayment(input: RecordPaymentInput): Promise<ActionRe
     };
   }
 
-  const { studentId, amount, currency, method, receivedOn, notes } = parsed.data;
+  const { studentId, amountCents, original, method, receivedOn, notes } = parsed.data;
 
   try {
     await db.payment.create({
       data: {
         studentId,
-        amountCents: amount,
-        currency,
+        amountCents,
+        currency: "MXN",
         method,
         receivedOn: parseDateOnly(receivedOn),
         notes: notes || null,
+        originalCurrency: original?.currency ?? null,
+        originalAmountCents: original?.amountCents ?? null,
+        exchangeRateMicros: original?.rateMicros ?? null,
       },
     });
   } catch (error) {
@@ -68,36 +77,17 @@ export async function recordPayment(input: RecordPaymentInput): Promise<ActionRe
 }
 
 /**
- * Removes a payment.
+ * Marks a teacher paid for one week, at what their completed classes come to.
  *
- * Kept deliberately blunt: a payment recorded by mistake is corrected by
- * deleting it and recording the right one. There is no partial edit, because a
- * half-corrected payment is harder to reason about than a replaced one.
+ * The amount is worked out here, on the server, from the classes and the rates
+ * — never taken from the screen — so the record cannot disagree with the
+ * calendar. Paying the same week again updates it: if a class was completed
+ * late, paying again records the corrected figure instead of a second payout.
  */
-export async function deletePayment(input: { id: string }): Promise<ActionResult> {
+export async function payTeacherWeek(input: PayTeacherWeekInput): Promise<ActionResult> {
   await requireUser();
 
-  const parsed = deletePaymentSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: "Select a payment to remove." };
-
-  await db.payment.deleteMany({ where: { id: parsed.data.id } });
-
-  revalidateMoney();
-  return { success: true };
-}
-
-/**
- * Records what a teacher is owed for a period.
- *
- * Upserted on the period, so settling the same fortnight twice corrects the
- * figure instead of creating a second payout beside it. Marking it paid is a
- * separate step, because entering the amount and paying it rarely happen at
- * the same moment.
- */
-export async function savePayout(input: SavePayoutInput): Promise<ActionResult> {
-  await requireUser();
-
-  const parsed = savePayoutSchema.safeParse(input);
+  const parsed = payTeacherWeekSchema.safeParse(input);
   if (!parsed.success) {
     return {
       success: false,
@@ -105,26 +95,29 @@ export async function savePayout(input: SavePayoutInput): Promise<ActionResult> 
     };
   }
 
-  const { teacherId, periodStart, periodEnd, amount, currency, notes } = parsed.data;
+  const { teacherId, weekStart, method } = parsed.data;
+
+  if (startOfWeekDate(weekStart) !== weekStart) {
+    return { success: false, error: "A pay week starts on a Monday." };
+  }
+
+  const amountCents = await teacherWeekPayCents(teacherId, weekStart);
+  if (amountCents === 0) {
+    return { success: false, error: "There are no completed classes to pay for that week." };
+  }
+
+  const period = {
+    teacherId,
+    periodStart: parseDateOnly(weekStart),
+    periodEnd: parseDateOnly(payWeekEnd(weekStart)),
+  };
+  const paidOn = parseDateOnly(todayInZone(DEFAULT_TIMEZONE));
 
   try {
     await db.teacherPayout.upsert({
-      where: {
-        teacherId_periodStart_periodEnd: {
-          teacherId,
-          periodStart: parseDateOnly(periodStart),
-          periodEnd: parseDateOnly(periodEnd),
-        },
-      },
-      update: { amountCents: amount, currency, notes: notes || null },
-      create: {
-        teacherId,
-        periodStart: parseDateOnly(periodStart),
-        periodEnd: parseDateOnly(periodEnd),
-        amountCents: amount,
-        currency,
-        notes: notes || null,
-      },
+      where: { teacherId_periodStart_periodEnd: period },
+      update: { amountCents, currency: "MXN", paidOn, method },
+      create: { ...period, amountCents, currency: "MXN", paidOn, method },
     });
   } catch (error) {
     if (

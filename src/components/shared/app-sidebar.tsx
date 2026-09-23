@@ -10,6 +10,7 @@ import {
   GraduationCap,
   Receipt,
   Settings,
+  StickyNote,
   Users,
   UsersRound,
   Wallet,
@@ -53,7 +54,10 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
   },
   {
     label: "Workspace",
-    items: [{ href: "/settings", label: "Settings", icon: Settings }],
+    items: [
+      { href: "/notes", label: "Notes", icon: StickyNote },
+      { href: "/settings", label: "Settings", icon: Settings },
+    ],
   },
 ];
 

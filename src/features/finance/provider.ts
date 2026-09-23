@@ -1,35 +1,34 @@
 import "server-only";
 import { isMissingTable } from "@/lib/db-errors";
-import { formatInZone, parseDateOnly } from "@/lib/datetime";
-import { getFinanceOverview } from "./queries";
+import { DEFAULT_TIMEZONE, formatInZone, parseDateOnly, todayInZone } from "@/lib/datetime";
+import { getFinanceOverview, getTeacherOwed } from "./queries";
 import { totalByCurrency } from "./money";
 import type { FinanceSnapshot } from "./snapshot";
 
 /**
  * The dashboard's money panel, from money actually received.
  *
- * The demo fixture this used to serve is gone: DARPE records real payments now,
- * so invented figures would compete with them. A month with no payments shows
- * zero, which is true, rather than a placeholder.
- *
- * Pesos only. The snapshot carries one currency, and adding pesos to dollars
- * for a single headline would state a number that is true in neither — the
- * finance screen is where both are shown side by side.
+ * A month with no payments shows zero, which is true, rather than a
+ * placeholder. Everything is in pesos: payments in other currencies are
+ * recorded at their peso value.
  */
 export async function getFinanceSnapshot(
   monthStartDate: string
 ): Promise<FinanceSnapshot | null> {
   let overview: Awaited<ReturnType<typeof getFinanceOverview>>;
+  let owed: Awaited<ReturnType<typeof getTeacherOwed>>;
 
   try {
-    overview = await getFinanceOverview();
+    [overview, owed] = await Promise.all([
+      getFinanceOverview(),
+      getTeacherOwed(todayInZone(DEFAULT_TIMEZONE)),
+    ]);
   } catch (error) {
     /*
      * P2021 — the payments tables are not on this database yet, because the
-     * migration adding them has not run. Same rule as the settings table: code
-     * that ships ahead of its migration degrades instead of taking the whole
-     * dashboard down with it, and the panel says finance is not set up. Every
-     * other error is a real fault and is rethrown untouched.
+     * migration adding them has not run. Code that ships ahead of its migration
+     * degrades instead of taking the whole dashboard down with it. Every other
+     * error is a real fault and is rethrown untouched.
      */
     if (isMissingTable(error)) return null;
     throw error;
@@ -43,11 +42,8 @@ export async function getFinanceSnapshot(
     currentMonthLabel: formatInZone(parseDateOnly(monthStartDate), "UTC", "MMMM"),
     currentMonthRevenueCents: pesos(overview.monthReceived),
     previousMonthRevenueCents: pesos(overview.previousMonthReceived),
-    outstandingCents: overview.unpaidPayouts.reduce(
-      (total, payout) => total + (payout.currency === "MXN" ? payout.amountCents : 0),
-      0
-    ),
-    outstandingCount: overview.unpaidPayouts.length,
+    outstandingCents: owed.totalCents,
+    outstandingCount: owed.teachers.length,
     monthlyRevenue: overview.monthly.map((month) => ({
       monthStart: month.monthStart,
       label: month.label,

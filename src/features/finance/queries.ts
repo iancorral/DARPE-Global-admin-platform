@@ -1,10 +1,26 @@
 import "server-only";
 import { db } from "@/lib/db";
-import { DEFAULT_TIMEZONE, formatDateOnly, formatInZone, parseDateOnly } from "@/lib/datetime";
+import {
+  DEFAULT_TIMEZONE,
+  addDaysToDate,
+  formatDateOnly,
+  formatInZone,
+  parseDateOnly,
+  startOfWeekDate,
+  zonedToUtc,
+} from "@/lib/datetime";
 import { dashboardWindows } from "@/features/dashboard/windows";
 import { fullName } from "@/lib/names";
-import { teachingLoad, totalByCurrency, type CurrencyTotal, type TeachingLoad } from "./money";
+import { totalByCurrency, type CurrencyTotal } from "./money";
 import { coursePriceCents, planLabel } from "./pricing";
+import {
+  PAY_WEEK_DAYS,
+  classPayCents,
+  countsTowardsGroupSize,
+  hourlyRateCents,
+  payWeekEnd,
+  shiftPayWeek,
+} from "./teacher-pay";
 import {
   financeMonthNav,
   monthStartOf,
@@ -14,157 +30,13 @@ import {
 import { getCoursePrices } from "@/features/settings/queries";
 import type {
   BillingStatus,
+  ClassType,
   Currency,
   Modality,
   PaymentMethod,
+  Prisma,
   StudentStatus,
 } from "@/generated/prisma/client";
-
-export type PaymentRow = {
-  id: string;
-  studentId: string;
-  studentName: string;
-  amountCents: number;
-  currency: Currency;
-  method: PaymentMethod;
-  receivedOn: string;
-  notes: string | null;
-};
-
-export type PayoutRow = {
-  id: string;
-  teacherId: string;
-  teacherName: string;
-  periodStart: string;
-  periodEnd: string;
-  amountCents: number;
-  currency: Currency;
-  paidOn: string | null;
-  method: PaymentMethod | null;
-  notes: string | null;
-};
-
-/**
- * The payments received in a period, newest first.
- *
- * Bounded: the screen shows a period, not the whole history, and a year of
- * payments is not something anyone reads down a page.
- */
-export async function getPayments(from: Date, to: Date): Promise<PaymentRow[]> {
-  const payments = await db.payment.findMany({
-    where: { receivedOn: { gte: from, lte: to } },
-    select: {
-      id: true,
-      studentId: true,
-      amountCents: true,
-      currency: true,
-      method: true,
-      receivedOn: true,
-      notes: true,
-      student: { select: { firstName: true, lastName: true } },
-    },
-    orderBy: [{ receivedOn: "desc" }, { createdAt: "desc" }],
-    take: 200,
-  });
-
-  return payments.map((payment) => ({
-    id: payment.id,
-    studentId: payment.studentId,
-    studentName: fullName(payment.student),
-    amountCents: payment.amountCents,
-    currency: payment.currency,
-    method: payment.method,
-    receivedOn: formatDateOnly(payment.receivedOn),
-    notes: payment.notes,
-  }));
-}
-
-export type TeacherPeriod = {
-  teacherId: string;
-  teacherName: string;
-  load: TeachingLoad;
-  payout: PayoutRow | null;
-};
-
-/**
- * Every active teacher's period: what they taught, and whether they have been
- * settled for it.
- *
- * The hours are derived from completed classes rather than stored, so they can
- * never drift from the calendar. A teacher who taught nothing still appears —
- * seeing a zero is how staff know the period was checked and not forgotten.
- */
-export async function getTeacherPeriods(
-  periodStart: string,
-  periodEnd: string
-): Promise<TeacherPeriod[]> {
-  // The period is a range of academy days; classes are absolute instants.
-  const from = new Date(`${periodStart}T00:00:00Z`);
-  const to = new Date(`${periodEnd}T23:59:59.999Z`);
-
-  const [teachers, sessions, payouts] = await Promise.all([
-    db.teacher.findMany({
-      where: { active: true },
-      select: { id: true, firstName: true, lastName: true },
-      orderBy: { firstName: "asc" },
-    }),
-    db.classSession.findMany({
-      where: { status: "COMPLETED", startsAt: { gte: from, lte: to } },
-      select: { teacherId: true, durationMinutes: true, type: true },
-    }),
-    db.teacherPayout.findMany({
-      where: {
-        periodStart: parseDateOnly(periodStart),
-        periodEnd: parseDateOnly(periodEnd),
-      },
-      select: {
-        id: true,
-        teacherId: true,
-        periodStart: true,
-        periodEnd: true,
-        amountCents: true,
-        currency: true,
-        paidOn: true,
-        method: true,
-        notes: true,
-        teacher: { select: { firstName: true, lastName: true } },
-      },
-    }),
-  ]);
-
-  const byTeacher = new Map<string, { durationMinutes: number; type: "INDIVIDUAL" | "GROUP" }[]>();
-  for (const session of sessions) {
-    const list = byTeacher.get(session.teacherId) ?? [];
-    list.push({ durationMinutes: session.durationMinutes, type: session.type });
-    byTeacher.set(session.teacherId, list);
-  }
-
-  const payoutByTeacher = new Map(payouts.map((payout) => [payout.teacherId, payout]));
-
-  return teachers.map((teacher) => {
-    const payout = payoutByTeacher.get(teacher.id);
-
-    return {
-      teacherId: teacher.id,
-      teacherName: fullName(teacher),
-      load: teachingLoad(byTeacher.get(teacher.id) ?? []),
-      payout: payout
-        ? {
-            id: payout.id,
-            teacherId: payout.teacherId,
-            teacherName: fullName(payout.teacher),
-            periodStart: formatDateOnly(payout.periodStart),
-            periodEnd: formatDateOnly(payout.periodEnd),
-            amountCents: payout.amountCents,
-            currency: payout.currency,
-            paidOn: payout.paidOn ? formatDateOnly(payout.paidOn) : null,
-            method: payout.method,
-            notes: payout.notes,
-          }
-        : null,
-    };
-  });
-}
 
 export type FinanceOverview = {
   monthLabel: string;
@@ -180,14 +52,6 @@ export type FinanceOverview = {
   /** Six months ending at the selected one, oldest first. */
   monthly: { monthStart: string; label: string; totals: CurrencyTotal[] }[];
   paymentCount: number;
-  /**
-   * Payouts still owed, whatever period they belong to.
-   *
-   * Deliberately **not** scoped to the selected month: "still owed" is a fact
-   * about now, and making it move with the pager would invent a figure for what
-   * was owed in August, which nothing records.
-   */
-  unpaidPayouts: PayoutRow[];
   /** Where the month pager may go. Null means there is nothing that way. */
   previousMonthStart: string | null;
   nextMonthStart: string | null;
@@ -223,7 +87,7 @@ export async function getFinanceOverview(
   const windowStart = shiftMonthStart(monthStartDate, -(MONTHS_SHOWN - 1));
   const nextMonth = shiftMonthStart(monthStartDate, 1);
 
-  const [payments, unpaid, span] = await Promise.all([
+  const [payments, span] = await Promise.all([
     db.payment.findMany({
       // Bounded at both ends now that the month can be any month: the chart
       // needs the five months before the selected one and nothing after it.
@@ -231,22 +95,6 @@ export async function getFinanceOverview(
         receivedOn: { gte: parseDateOnly(windowStart), lt: parseDateOnly(nextMonth) },
       },
       select: { amountCents: true, currency: true, method: true, receivedOn: true },
-    }),
-    db.teacherPayout.findMany({
-      where: { paidOn: null },
-      select: {
-        id: true,
-        teacherId: true,
-        periodStart: true,
-        periodEnd: true,
-        amountCents: true,
-        currency: true,
-        paidOn: true,
-        method: true,
-        notes: true,
-        teacher: { select: { firstName: true, lastName: true } },
-      },
-      orderBy: { periodStart: "desc" },
     }),
     // The whole history's outer edges, which is what bounds the pager. One
     // aggregate rather than loading payments nobody is going to show.
@@ -296,21 +144,246 @@ export async function getFinanceOverview(
     })),
     monthly,
     paymentCount: selectedMonth.length,
-    unpaidPayouts: unpaid.map((payout) => ({
-      id: payout.id,
-      teacherId: payout.teacherId,
-      teacherName: fullName(payout.teacher),
-      periodStart: formatDateOnly(payout.periodStart),
-      periodEnd: formatDateOnly(payout.periodEnd),
-      amountCents: payout.amountCents,
-      currency: payout.currency,
-      paidOn: null,
-      method: payout.method,
-      notes: payout.notes,
-    })),
     previousMonthStart: nav.previous,
     nextMonthStart: nav.next,
     isCurrentMonth: monthStartDate === currentMonthStart,
+  };
+}
+
+/** One completed class, as a line on a teacher's weekly pay. */
+export type PayLine = {
+  sessionId: string;
+  /** "Mon 14", academy time. */
+  dateLabel: string;
+  startLabel: string;
+  /** The group's name, or the student's. */
+  title: string;
+  type: ClassType;
+  /** Students counted for the rate; 1 for an individual class. */
+  students: number;
+  minutes: number;
+  hourlyCents: number;
+  amountCents: number;
+};
+
+export type TeacherPayWeekRow = {
+  teacherId: string;
+  teacherName: string;
+  lines: PayLine[];
+  minutes: number;
+  /** What the week's completed classes come to right now. */
+  amountCents: number;
+  /** The payout recorded for this week, if any. */
+  payout: {
+    id: string;
+    amountCents: number;
+    paidOn: string | null;
+    method: PaymentMethod | null;
+  } | null;
+};
+
+const PAY_SESSION_SELECT = {
+  id: true,
+  teacherId: true,
+  startsAt: true,
+  durationMinutes: true,
+  type: true,
+  group: { select: { name: true } },
+  participants: {
+    select: {
+      attendance: true,
+      student: { select: { firstName: true, lastName: true } },
+    },
+  },
+} satisfies Prisma.ClassSessionSelect;
+
+type PaySession = Prisma.ClassSessionGetPayload<{ select: typeof PAY_SESSION_SELECT }>;
+
+function toPayLine(session: PaySession): PayLine {
+  const students =
+    session.type === "GROUP"
+      ? session.participants.filter((participant) =>
+          countsTowardsGroupSize(participant.attendance)
+        ).length
+      : 1;
+  const firstStudent = session.participants[0]?.student;
+
+  return {
+    sessionId: session.id,
+    dateLabel: formatInZone(session.startsAt, DEFAULT_TIMEZONE, "EEE d"),
+    startLabel: formatInZone(session.startsAt, DEFAULT_TIMEZONE),
+    title: session.group?.name ?? (firstStudent ? fullName(firstStudent) : "Class"),
+    type: session.type,
+    students,
+    minutes: session.durationMinutes,
+    hourlyCents: hourlyRateCents(session.type, students),
+    amountCents: classPayCents({
+      type: session.type,
+      students,
+      durationMinutes: session.durationMinutes,
+    }),
+  };
+}
+
+/** A pay week's boundaries as instants: Monday 00:00 to the next Monday, academy time. */
+function payWeekRange(weekStart: string) {
+  return {
+    from: zonedToUtc(weekStart, "00:00", DEFAULT_TIMEZONE),
+    to: zonedToUtc(addDaysToDate(weekStart, PAY_WEEK_DAYS), "00:00", DEFAULT_TIMEZONE),
+  };
+}
+
+/**
+ * Every teacher's pay for one week, class by class.
+ *
+ * Only completed classes count, at DARPE's rates (`teacher-pay.ts`). Active
+ * teachers appear even with nothing to pay — a zero is how staff know the week
+ * was checked — and so does an inactive teacher who still taught that week.
+ */
+export async function getTeacherPayWeek(weekStart: string): Promise<TeacherPayWeekRow[]> {
+  const { from, to } = payWeekRange(weekStart);
+  const taughtThatWeek = { status: "COMPLETED" as const, startsAt: { gte: from, lt: to } };
+
+  const [teachers, sessions, payouts] = await Promise.all([
+    db.teacher.findMany({
+      where: { OR: [{ active: true }, { sessions: { some: taughtThatWeek } }] },
+      select: { id: true, firstName: true, lastName: true },
+      orderBy: { firstName: "asc" },
+    }),
+    db.classSession.findMany({
+      where: taughtThatWeek,
+      select: PAY_SESSION_SELECT,
+      orderBy: { startsAt: "asc" },
+    }),
+    db.teacherPayout.findMany({
+      where: {
+        periodStart: parseDateOnly(weekStart),
+        periodEnd: parseDateOnly(payWeekEnd(weekStart)),
+      },
+      select: { id: true, teacherId: true, amountCents: true, paidOn: true, method: true },
+    }),
+  ]);
+
+  const linesByTeacher = new Map<string, PayLine[]>();
+  for (const session of sessions) {
+    const lines = linesByTeacher.get(session.teacherId) ?? [];
+    lines.push(toPayLine(session));
+    linesByTeacher.set(session.teacherId, lines);
+  }
+
+  const payoutByTeacher = new Map(payouts.map((payout) => [payout.teacherId, payout]));
+
+  return teachers
+    .map((teacher) => {
+      const lines = linesByTeacher.get(teacher.id) ?? [];
+      const payout = payoutByTeacher.get(teacher.id);
+
+      return {
+        teacherId: teacher.id,
+        teacherName: fullName(teacher),
+        lines,
+        minutes: lines.reduce((total, line) => total + line.minutes, 0),
+        amountCents: lines.reduce((total, line) => total + line.amountCents, 0),
+        payout: payout
+          ? {
+              id: payout.id,
+              amountCents: payout.amountCents,
+              paidOn: payout.paidOn ? formatDateOnly(payout.paidOn) : null,
+              method: payout.method,
+            }
+          : null,
+      };
+    })
+    .sort(
+      (a, b) =>
+        Number(b.lines.length > 0) - Number(a.lines.length > 0) ||
+        a.teacherName.localeCompare(b.teacherName)
+    );
+}
+
+/** What one teacher's completed classes in a week come to — for recording a payout. */
+export async function teacherWeekPayCents(teacherId: string, weekStart: string): Promise<number> {
+  const { from, to } = payWeekRange(weekStart);
+
+  const sessions = await db.classSession.findMany({
+    where: { teacherId, status: "COMPLETED", startsAt: { gte: from, lt: to } },
+    select: PAY_SESSION_SELECT,
+  });
+
+  return sessions.reduce((total, session) => total + toPayLine(session).amountCents, 0);
+}
+
+/** How far back "owed to teachers" looks for completed classes not yet paid. */
+export const OWED_LOOKBACK_WEEKS = 12;
+
+export type TeacherOwed = {
+  teacherId: string;
+  teacherName: string;
+  amountCents: number;
+  /** How many pay weeks the amount spans. */
+  weeks: number;
+};
+
+/**
+ * What is still owed to teachers: completed classes in weeks not yet paid.
+ *
+ * Worked out from the classes, the same way the pay screen does, rather than
+ * from payouts somebody remembered to create — so a week nobody has opened
+ * still counts. Bounded to the last twelve weeks.
+ */
+export async function getTeacherOwed(
+  today: string
+): Promise<{ totalCents: number; teachers: TeacherOwed[] }> {
+  const since = shiftPayWeek(startOfWeekDate(today), -OWED_LOOKBACK_WEEKS);
+
+  const [sessions, paid] = await Promise.all([
+    db.classSession.findMany({
+      where: {
+        status: "COMPLETED",
+        startsAt: { gte: zonedToUtc(since, "00:00", DEFAULT_TIMEZONE) },
+      },
+      select: {
+        ...PAY_SESSION_SELECT,
+        teacher: { select: { firstName: true, lastName: true } },
+      },
+    }),
+    db.teacherPayout.findMany({
+      where: { paidOn: { not: null }, periodStart: { gte: parseDateOnly(since) } },
+      select: { teacherId: true, periodStart: true },
+    }),
+  ]);
+
+  const settled = new Set(
+    paid.map((payout) => `${payout.teacherId}|${formatDateOnly(payout.periodStart)}`)
+  );
+
+  const byTeacher = new Map<string, { name: string; amountCents: number; weeks: Set<string> }>();
+  for (const session of sessions) {
+    const week = startOfWeekDate(formatInZone(session.startsAt, DEFAULT_TIMEZONE, "yyyy-MM-dd"));
+    if (settled.has(`${session.teacherId}|${week}`)) continue;
+
+    const entry = byTeacher.get(session.teacherId) ?? {
+      name: fullName(session.teacher),
+      amountCents: 0,
+      weeks: new Set<string>(),
+    };
+    entry.amountCents += toPayLine(session).amountCents;
+    entry.weeks.add(week);
+    byTeacher.set(session.teacherId, entry);
+  }
+
+  const teachers = [...byTeacher.entries()]
+    .map(([teacherId, entry]) => ({
+      teacherId,
+      teacherName: entry.name,
+      amountCents: entry.amountCents,
+      weeks: entry.weeks.size,
+    }))
+    .sort((a, b) => b.amountCents - a.amountCents);
+
+  return {
+    totalCents: teachers.reduce((total, teacher) => total + teacher.amountCents, 0),
+    teachers,
   };
 }
 

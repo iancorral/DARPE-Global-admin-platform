@@ -12,9 +12,15 @@ datasource db {
   provider = "postgresql"
 }
 
+/// What a staff account may manage. Everyone sees everything; the role only
+/// decides who can add people and reset their passwords (OWNER and ADMIN).
+///
+/// OWNER is Dhanna; ADMIN is whoever maintains the app; STAFF is everyone else
+/// who runs the academy day to day.
 enum UserRole {
   OWNER
   ADMIN
+  STAFF
 }
 
 model Profile {
@@ -32,6 +38,11 @@ model Profile {
   /// Supabase Auth owns the password itself; this records only that the change
   /// went through the app, because `auth.users` is not Prisma's to read.
   passwordSetAt DateTime?
+  /// Notes this person wrote. A note is private unless it was shared with the
+  /// team: a private one is only ever reachable by its owner.
+  notes     Note[] @relation("NoteOwner")
+  /// Shared tasks pointed at this person.
+  assignedNotes Note[] @relation("NoteAssignee")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -376,6 +387,13 @@ model Payment {
   /// The day the money arrived. Revenue counts on this date.
   receivedOn  DateTime      @db.Date
   notes       String?
+  /// Set only when the student paid in another currency. `amountCents` is
+  /// always what it came to in pesos — the figure every total uses — and these
+  /// three record what was actually handed over, for reference.
+  originalCurrency    String? @db.VarChar(3)
+  originalAmountCents Int?
+  /// Pesos per one unit of `originalCurrency`, times 1,000,000 (17.07 → 17070000).
+  exchangeRateMicros  Int?
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
@@ -414,4 +432,57 @@ model TeacherPayout {
   @@unique([teacherId, periodStart, periodEnd])
   @@index([paidOn])
   @@map("teacher_payouts")
+}
+
+/// A private note: free text, a checklist, or both.
+///
+/// Owned by one profile and visible to nobody else in the app. `archived` is
+/// "done" — out of the way, never deleted by accident.
+model Note {
+  id        String    @id @default(cuid())
+  ownerId   String    @db.Uuid
+  title     String    @default("")
+  body      String    @default("")
+  /// A tone name from `NOTE_COLORS`, or null for plain white.
+  color     String?
+  /// "URGENT" or "IMPORTANT" from `NOTE_PRIORITIES`, null for an ordinary note.
+  /// Text rather than an enum: it mirrors the "Importancia" column of DARPE's
+  /// own tracking sheet, and that vocabulary is still theirs to change.
+  priority  String?
+  /// False for a private note, true for one on the team board every staff
+  /// member reads and edits. DARPE's own tracking sheet is a shared list with a
+  /// "Responsable" column, and a private notebook could not replace it.
+  shared     Boolean  @default(false)
+  /// Who a shared task is for. Null means nobody has taken it yet. Only
+  /// meaningful while `shared` is true.
+  assigneeId String?  @db.Uuid
+  pinned    Boolean   @default(false)
+  /// A day to be reminded on; the dashboard shows it from that day on.
+  dueOn     DateTime? @db.Date
+  archived  Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  owner    Profile    @relation("NoteOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  assignee Profile?   @relation("NoteAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  items    NoteItem[]
+
+  @@index([ownerId, archived])
+  @@index([shared, archived])
+  @@map("notes")
+}
+
+/// One line of a note's checklist.
+model NoteItem {
+  id        String   @id @default(cuid())
+  noteId    String
+  text      String
+  done      Boolean  @default(false)
+  position  Int
+  createdAt DateTime @default(now())
+
+  note Note @relation(fields: [noteId], references: [id], onDelete: Cascade)
+
+  @@index([noteId])
+  @@map("note_items")
 }

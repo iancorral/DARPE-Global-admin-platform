@@ -23,9 +23,9 @@ export type FinanceSnapshot = {
   currentMonthLabel: string;
   currentMonthRevenueCents: number;
   previousMonthRevenueCents: number;
-  /** Still owed to teachers: unpaid payouts, not anything owed by students. */
+  /** Still owed to teachers: completed classes not yet paid. Never students. */
   outstandingCents: number;
-  /** Number of unpaid payouts making up `outstandingCents`, when known. */
+  /** How many teachers make up `outstandingCents`, when known. */
   outstandingCount: number | null;
   /** Oldest first; the last point is the current month. */
   monthlyRevenue: MoneySeriesPoint[];

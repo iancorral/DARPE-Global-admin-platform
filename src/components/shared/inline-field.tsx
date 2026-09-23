@@ -124,7 +124,10 @@ export function InlineText({
     >
       <span
         className={cn(
-          "min-w-0 flex-1 truncate",
+          "min-w-0 flex-1",
+          // A multi-line value reads as written; cutting it to one line hid
+          // everything after the first sentence of a note.
+          multiline ? "wrap-break-word whitespace-pre-wrap" : "truncate",
           value ? "" : cn("text-muted-foreground/70", emptyClassName)
         )}
       >

@@ -1,5 +1,10 @@
+import Link from "next/link";
 import { AlertCircle, TrendingUp } from "lucide-react";
-import { getFinanceOverview, getPayableStudents } from "@/features/finance/queries";
+import {
+  getFinanceOverview,
+  getPayableStudents,
+  getTeacherOwed,
+} from "@/features/finance/queries";
 import { RecordPayment } from "@/features/finance/components/record-payment";
 import { MonthPager } from "@/features/finance/components/month-pager";
 import { selectedMonthStart } from "@/features/finance/months";
@@ -9,8 +14,8 @@ import { MigrationPending } from "@/features/finance/components/migration-pendin
 import { isMissingTable } from "@/lib/db-errors";
 import { formatAmount, formatTotals, PAYMENT_METHOD_LABELS } from "@/features/finance/money";
 import { EmptyState } from "@/components/shared/empty-state";
+import { InitialsAvatar } from "@/components/shared/identity";
 import { PageContainer, PageHeader, Section } from "@/components/shared/page";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 export default async function FinancePage({
@@ -34,18 +39,20 @@ export default async function FinancePage({
 
   let overview: Awaited<ReturnType<typeof getFinanceOverview>>;
   let students: Awaited<ReturnType<typeof getPayableStudents>>;
+  let owed: Awaited<ReturnType<typeof getTeacherOwed>>;
   try {
-    [overview, students] = await Promise.all([
+    [overview, students, owed] = await Promise.all([
       getFinanceOverview({ monthStart }),
       getPayableStudents(),
+      getTeacherOwed(today),
     ]);
   } catch (error) {
     if (!isMissingTable(error)) throw error;
     return <MigrationPending title="Finance" />;
   }
 
-  // Only the peso figures drive the bar heights: mixing currencies into one
-  // scale would draw a shape that means nothing.
+  // Only the peso figures drive the bar heights: every payment is recorded in
+  // pesos now, and a scale mixing currencies would draw a meaningless shape.
   const pesoByMonth = overview.monthly.map((month) => ({
     ...month,
     pesos: month.totals.find((total) => total.currency === "MXN")?.amountCents ?? 0,
@@ -87,28 +94,27 @@ export default async function FinancePage({
           </p>
         </div>
 
-        <div className="rounded-xl border border-t-2 border-t-tone-amber-fg bg-card p-4 shadow-xs">
+        {/*
+          Does not follow the month pager: what is owed is a fact about today —
+          completed classes in weeks nobody has paid yet.
+        */}
+        <Link
+          href="/payments?tab=payouts"
+          className="rounded-xl border border-t-2 border-t-tone-amber-fg bg-card p-4 shadow-xs transition-shadow hover:shadow-sm motion-reduce:transition-none"
+        >
           <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <AlertCircle aria-hidden="true" className="size-3.5" />
             Owed to teachers
           </p>
           <p className="mt-1 font-serif text-2xl font-semibold tracking-tight">
-            {formatTotals(
-              overview.unpaidPayouts.map((payout) => ({
-                amountCents: payout.amountCents,
-                currency: payout.currency,
-              }))
-            )}
+            {formatAmount(owed.totalCents, "MXN")}
           </p>
-          {/*
-            Does not follow the month pager: what is still owed is a fact about
-            today, whatever period the payouts belong to.
-          */}
           <p className="mt-1 text-xs text-muted-foreground">
-            {overview.unpaidPayouts.length} unpaid{" "}
-            {overview.unpaidPayouts.length === 1 ? "payout" : "payouts"}
+            {owed.teachers.length === 0
+              ? "Everyone is paid up"
+              : `${owed.teachers.length} ${owed.teachers.length === 1 ? "teacher" : "teachers"} · completed classes not yet paid`}
           </p>
-        </div>
+        </Link>
       </div>
 
       <div className="space-y-8">
@@ -117,9 +123,7 @@ export default async function FinancePage({
           description={`Pesos, six months to ${overview.monthLabel}`}
         >
           {!hasHistory ? (
-            <EmptyState>
-              No payments in these six months.
-            </EmptyState>
+            <EmptyState>No payments in these six months.</EmptyState>
           ) : (
             <div className="rounded-xl border bg-card p-5 shadow-xs">
               <div className="flex h-40 items-end gap-3">
@@ -196,22 +200,22 @@ export default async function FinancePage({
           )}
         </Section>
 
-        {overview.unpaidPayouts.length > 0 && (
-          <Section title="Payouts still owed">
+        {owed.teachers.length > 0 && (
+          <Section title="Still to pay">
             <ul className="divide-y overflow-hidden rounded-xl border bg-card shadow-xs">
-              {overview.unpaidPayouts.map((payout) => (
-                <li key={payout.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
+              {owed.teachers.map((teacher) => (
+                <li key={teacher.teacherId} className="flex flex-wrap items-center gap-3 px-4 py-3">
+                  <InitialsAvatar name={teacher.teacherName} className="size-8" />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium">
-                      {payout.teacherName}
+                      {teacher.teacherName}
                     </span>
                     <span className="block truncate text-xs text-muted-foreground">
-                      {payout.periodStart} to {payout.periodEnd}
+                      {teacher.weeks} {teacher.weeks === 1 ? "week" : "weeks"}
                     </span>
                   </span>
-                  <Badge variant="outline">Unpaid</Badge>
                   <span className="text-sm font-medium tabular-nums">
-                    {formatAmount(payout.amountCents, payout.currency)}
+                    {formatAmount(teacher.amountCents, "MXN")}
                   </span>
                 </li>
               ))}

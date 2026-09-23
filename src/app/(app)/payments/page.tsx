@@ -1,43 +1,66 @@
 import {
-  getFinanceOverview,
   getPayableStudents,
   getStudentBilling,
-  getTeacherPeriods,
+  getTeacherPayWeek,
 } from "@/features/finance/queries";
+import {
+  defaultPayWeekStart,
+  paydayFor,
+  payWeekEnd,
+  selectedPayWeek,
+  shiftPayWeek,
+} from "@/features/finance/teacher-pay";
 import { RecordPayment } from "@/features/finance/components/record-payment";
 import { PayoutsPanel } from "@/features/finance/components/payouts-panel";
+import { PayWeekPager } from "@/features/finance/components/pay-week-pager";
 import { StudentBillingTable } from "@/features/finance/components/student-billing-table";
 import { MigrationPending } from "@/features/finance/components/migration-pending";
-import { EmptyState } from "@/components/shared/empty-state";
 import { PageContainer, PageHeader } from "@/components/shared/page";
 import { TabSwitch } from "@/components/shared/tab-switch";
-import { DEFAULT_TIMEZONE, todayInZone } from "@/lib/datetime";
+import {
+  DEFAULT_TIMEZONE,
+  formatInZone,
+  parseDateOnly,
+  startOfWeekDate,
+  todayInZone,
+} from "@/lib/datetime";
 import { isMissingTable } from "@/lib/db-errors";
 
-/**
- * Money in from students, money out to teachers — one list each.
- *
- * Deliberately not a ledger of individual payments: what a student pays is
- * inferred from the plan they are on, so the useful view is "who is on what and
- * have they paid", not a receipt per transaction. Recording an actual payment
- * is still here as an action; the history of them lives on the finance screen.
- */
-export default async function PaymentsPage() {
-  const today = todayInZone(DEFAULT_TIMEZONE);
+/** A calendar date as text, without a timezone shift. */
+function dateLabel(date: string, pattern: string): string {
+  return formatInZone(parseDateOnly(date), "UTC", pattern);
+}
 
-  let overview: Awaited<ReturnType<typeof getFinanceOverview>>;
+function payWeekHref(weekStart: string): string {
+  return `/payments?tab=payouts&week=${weekStart}`;
+}
+
+/**
+ * Money in from students, money out to teachers — one tab each.
+ *
+ * Teacher pay goes a week at a time, because teachers are paid on Fridays: the
+ * week shown is chosen by `?week=` and defaults to the one due this Friday.
+ */
+export default async function PaymentsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const params = await searchParams;
+  const today = todayInZone(DEFAULT_TIMEZONE);
+  const weekParam = Array.isArray(params.week) ? params.week[0] : params.week;
+  const weekStart = selectedPayWeek(weekParam, today);
+  const openTab = params.tab === "payouts" || weekParam ? "payouts" : "students";
+
   let students: Awaited<ReturnType<typeof getPayableStudents>>;
   let billing: Awaited<ReturnType<typeof getStudentBilling>>;
-  let periods: Awaited<ReturnType<typeof getTeacherPeriods>>;
+  let payWeek: Awaited<ReturnType<typeof getTeacherPayWeek>>;
 
   try {
-    overview = await getFinanceOverview();
-    [students, billing, periods] = await Promise.all([
+    [students, billing, payWeek] = await Promise.all([
       getPayableStudents(),
       getStudentBilling(),
-      // The academy month is the settlement period until DARPE settles on
-      // fortnights or something else.
-      getTeacherPeriods(overview.monthStartDate, overview.monthEndDate),
+      getTeacherPayWeek(weekStart),
     ]);
   } catch (error) {
     if (!isMissingTable(error)) throw error;
@@ -47,18 +70,22 @@ export default async function PaymentsPage() {
   const unpaid = billing.filter(
     (row) => row.status === "ACTIVE" && row.billing === "PENDING"
   ).length;
-  const owedCount = periods.filter((period) => period.payout && !period.payout.paidOn).length;
+  const toPay = payWeek.filter((row) => row.amountCents > 0 && !row.payout?.paidOn).length;
+
+  const next = shiftPayWeek(weekStart, 1);
+  const isDefaultWeek = weekStart === defaultPayWeekStart(today);
 
   return (
     <PageContainer>
       <PageHeader
         title="Payments"
-        description={`Money in from students · money out to teachers · ${overview.monthLabel}`}
+        description="Money in from students · money out to teachers"
         actions={<RecordPayment students={students} defaultDate={today} />}
       />
 
       <TabSwitch
         label="Payments view"
+        defaultTab={openTab}
         tabs={[
           {
             id: "students",
@@ -68,20 +95,20 @@ export default async function PaymentsPage() {
           },
           {
             id: "payouts",
-            label: "Teacher payouts",
-            count: owedCount || undefined,
-            content:
-              periods.length === 0 ? (
-                <EmptyState>No active teachers yet.</EmptyState>
-              ) : (
-                <PayoutsPanel
-                  periods={periods}
-                  periodStart={overview.monthStartDate}
-                  periodEnd={overview.monthEndDate}
-                  periodLabel={overview.monthLabel}
-                  today={today}
+            label: "Teacher pay",
+            count: toPay || undefined,
+            content: (
+              <>
+                <PayWeekPager
+                  label={`${dateLabel(weekStart, "MMM d")} – ${dateLabel(payWeekEnd(weekStart), "MMM d, yyyy")}`}
+                  sublabel={`Paid ${dateLabel(paydayFor(weekStart), "EEEE, MMM d")}`}
+                  previousHref={payWeekHref(shiftPayWeek(weekStart, -1))}
+                  nextHref={next <= startOfWeekDate(today) ? payWeekHref(next) : null}
+                  defaultHref={isDefaultWeek ? null : "/payments?tab=payouts"}
                 />
-              ),
+                <PayoutsPanel rows={payWeek} weekStart={weekStart} />
+              </>
+            ),
           },
         ]}
       />
