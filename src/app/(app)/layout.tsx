@@ -1,12 +1,16 @@
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getCurrentUser, getSignedInEmail } from "@/lib/auth";
 import { AppSidebar } from "@/components/shared/app-sidebar";
+import { SIDEBAR_COLLAPSED, SIDEBAR_COOKIE } from "@/components/shared/sidebar-state";
 import { AppContent } from "@/components/shared/app-content";
 import { NoProfile } from "@/features/auth/components/no-profile";
 import { Toaster } from "@/components/ui/sonner";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const user = await getCurrentUser();
+  const [user, cookieStore] = await Promise.all([getCurrentUser(), cookies()]);
+  // Read here so the sidebar is already the right width on the first paint.
+  const sidebarCollapsed = cookieStore.get(SIDEBAR_COOKIE)?.value === SIDEBAR_COLLAPSED;
 
   /*
    * Two different failures, told apart rather than both redirecting.
@@ -37,7 +41,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
      * removes the dependency: there is no document height left to grow.
      */
     <div className="fixed inset-0 flex flex-col overflow-hidden lg:flex-row">
-      <AppSidebar userName={user.name} userRole={user.role} userEmail={user.email} />
+      <AppSidebar
+        userName={user.name}
+        userRole={user.role}
+        userEmail={user.email}
+        initialCollapsed={sidebarCollapsed}
+      />
       <AppContent>{children}</AppContent>
       {/*
         Every mutation reports through `toast`, and without this mounted none

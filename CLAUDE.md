@@ -773,7 +773,15 @@ Money screens:
 
 Navigation: grouped sidebar — Overview (Dashboard), Operations (Calendar, Students,
 Groups, Teachers), Money (Finance, Payments), Workspace (Notes, Settings). Navigation never
-links to a missing page. A phone has five tabs (Home, Calendar, Students, Groups,
+links to a missing page. On a desktop the sidebar **folds to an icon rail** (Ian,
+2026-09-22), mainly to give the calendar its width. The toggle is the menu's **last row**,
+"« Collapse", styled exactly like the entries above it (GitLab, the Azure portal).
+Three placements at the top failed review: a panel icon read as a strange box, a
+☰ beside the wordmark crowded it off-centre, and a round handle on the border
+looked like nothing else in the app. The top belongs to the brand alone: every entry keeps its name as
+a tooltip and for screen readers, and the state lives in a cookie
+(`src/components/shared/sidebar-state.ts`) that the `(app)` layout reads, so the
+first paint is already the right width instead of opening and snapping shut. A phone has five tabs (Home, Calendar, Students, Groups,
 Teachers) and a slim top bar, `MobileTopBar`, whose avatar opens a bottom sheet
 with Notes, Finance, Payments, Settings and Sign out — the pattern Gmail and Google
 Calendar use — instead of a sixth tab.
