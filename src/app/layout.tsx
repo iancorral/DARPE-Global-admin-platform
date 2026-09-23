@@ -54,6 +54,16 @@ export const metadata: Metadata = {
     // Student phone numbers are data, not links to dial from an admin table.
     telephone: false,
   },
+  /*
+   * `appleWebApp.capable` now emits only the standard `mobile-web-app-capable`.
+   * iOS still opens the app full screen from the manifest, but it only honours
+   * the `apple-touch-startup-image` launch screens when it sees its own
+   * `apple-mobile-web-app-capable` — without this line every splash above is
+   * ignored and the app launches on a blank screen.
+   */
+  other: {
+    "apple-mobile-web-app-capable": "yes",
+  },
 };
 
 /**
