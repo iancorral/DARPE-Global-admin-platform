@@ -47,6 +47,7 @@ export default async function SettingsPage() {
             <TeamPanel
               members={team}
               currentUserId={profile.id}
+              currentUserRole={profile.role}
               configured={isAccountManagementConfigured()}
             />
           </Section>

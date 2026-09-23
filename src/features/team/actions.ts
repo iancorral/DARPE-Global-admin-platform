@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { firstValidationMessage } from "@/features/sessions/schemas";
-import { canManageTeam } from "./roles";
+import { canManageTeam, canResetPasswordOf } from "./roles";
 import {
   addTeamMemberSchema,
   resetTeamPasswordSchema,
@@ -116,8 +116,16 @@ export async function resetTeamMemberPassword(
   const admin = createAdminClient();
   if (!admin) return { success: false, error: NOT_CONFIGURED };
 
-  const target = await db.profile.findUnique({ where: { id: profileId }, select: { id: true } });
+  const target = await db.profile.findUnique({
+    where: { id: profileId },
+    select: { id: true, role: true },
+  });
   if (!target) return { success: false, error: "That person no longer has an account." };
+  // Checked here, not only by hiding the button: an admin account must never
+  // be reset from the app, however the request arrives.
+  if (!canResetPasswordOf(me.role, target.role)) {
+    return { success: false, error: "Only this person can change this account's password." };
+  }
 
   const { error } = await admin.auth.admin.updateUserById(profileId, {
     password: temporaryPassword,

@@ -68,11 +68,20 @@ Teachers are NOT authentication users in the current phase.
 
 There are three internal users and they currently share the same operational permissions.
 
-Roles are OWNER (Dhanna), ADMIN (Ian's maintenance account) and STAFF. They differ in
-**one** thing only: `canManageTeam` (`src/features/team/roles.ts`) lets OWNER and ADMIN
-use Settings → Team, which adds people and resets passwords. Everything else is the
-same for everyone — do not invent other role-specific restrictions unless a real
-business requirement exists.
+Roles are OWNER (Dhanna), ADMIN (Ian's maintenance account) and STAFF, which is
+labelled **Member** on screen (Ian, 2026-09-22: "Staff" sounded like a lesser rank;
+the stored enum value is unchanged). They differ in **one** thing only:
+`canManageTeam` (`src/features/team/roles.ts`) lets OWNER and ADMIN use Settings →
+Team, which adds people and resets passwords. Everything else is the same for
+everyone — do not invent other role-specific restrictions unless a real business
+requirement exists.
+
+**An admin account can never be reset from the app** (`canResetPasswordOf`, enforced
+in `resetTeamMemberPassword` and mirrored by hiding the button). The maintainer must
+always be able to get in, and a reset by mistake — the owner included — would lock
+out the one person who can fix things. The app has no delete or disable either, so
+that was the only lever. An admin changes their own password under Your account;
+a forgotten one is recovered in the Supabase dashboard.
 
 **Settings → Team** (`src/features/team/`) creates the Supabase Auth user *and* its
 `profiles` row in one action, deleting the auth user again if the profile fails, so

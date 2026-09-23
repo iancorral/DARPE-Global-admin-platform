@@ -15,7 +15,8 @@ import { InitialsAvatar } from "@/components/shared/identity";
 import { TONE_CLASSES } from "@/lib/tone";
 import { addTeamMember, resetTeamMemberPassword } from "../actions";
 import { generateTemporaryPassword } from "../password";
-import { ASSIGNABLE_ROLES, ROLE_LABELS } from "../roles";
+import { ASSIGNABLE_ROLES, ROLE_LABELS, canResetPasswordOf } from "../roles";
+import type { UserRole } from "@/generated/prisma/client";
 import type { TeamMember } from "../queries";
 
 type Shared = { name: string; email: string; password: string };
@@ -31,10 +32,12 @@ type Shared = { name: string; email: string; password: string };
 export function TeamPanel({
   members,
   currentUserId,
+  currentUserRole,
   configured,
 }: {
   members: TeamMember[];
   currentUserId: string;
+  currentUserRole: UserRole;
   configured: boolean;
 }) {
   const [adding, setAdding] = useState(false);
@@ -63,7 +66,9 @@ export function TeamPanel({
                 </Badge>
               )}
               <Badge variant="outline">{ROLE_LABELS[member.role]}</Badge>
-              {configured && member.id !== currentUserId && (
+              {configured &&
+                member.id !== currentUserId &&
+                canResetPasswordOf(currentUserRole, member.role) && (
                 <Button
                   size="sm"
                   variant="ghost"
