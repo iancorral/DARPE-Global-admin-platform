@@ -68,7 +68,36 @@ Teachers are NOT authentication users in the current phase.
 
 There are three internal users and they currently share the same operational permissions.
 
-Keep the role field because it documents the intended architecture, but do not invent role-specific restrictions unless a real business requirement exists.
+Roles are OWNER (Dhanna), ADMIN (Ian's maintenance account) and STAFF. They differ in
+**one** thing only: `canManageTeam` (`src/features/team/roles.ts`) lets OWNER and ADMIN
+use Settings → Team, which adds people and resets passwords. Everything else is the
+same for everyone — do not invent other role-specific restrictions unless a real
+business requirement exists.
+
+**Settings → Team** (`src/features/team/`) creates the Supabase Auth user *and* its
+`profiles` row in one action, deleting the auth user again if the profile fails, so
+the two-step trap below cannot happen from the app. It needs `SUPABASE_SECRET_KEY`
+on the server (`src/lib/supabase/admin.ts`); without it the section says so and the
+rest of the app is unaffected. A new account and a reset both leave
+`passwordSetAt` null, so the person is asked to choose their own. Nobody can reset
+their own password there — that is Settings → Your account.
+
+**Notes** (`/notes`, `src/features/notes/`) are two boards on one screen:
+
+- **Mine** — private to each profile, the admin's included. Every read and write
+  goes through `reachable()` in `actions.ts`, so another person's private note id
+  matches nothing. "Private" means private inside the app; whoever owns the
+  database can still read them.
+- **Team** — `shared: true`. Any staff member reads and edits these, and each can
+  be pointed at one person (`assigneeId`). It exists because DARPE's own tracking
+  sheet is a shared list with a *Responsable* column, so a private notebook could
+  never replace it (Ian, 2026-09-22).
+
+Both carry checklists, colours, a reminder date, pinning, archive and an
+**importance** (`NOTE_PRIORITIES`: URGENT, IMPORTANT, or none) — their sheet's
+*Importancia* column, cycled on one button. The dashboard shows a person's own
+urgent/pinned/due notes plus the team tasks assigned to them; an unassigned team
+task stays on the board.
 
 **Creating an account is two steps, and skipping the second one breaks the app.**
 A Supabase Auth user needs a matching `profiles` row with the *same id*, because
@@ -252,8 +281,10 @@ A group is **one teacher and one language**, taught to several students. Settled
   makes attendance per student work exactly as it does for an individual class.
 - Removing a member never touches classes that already happened; they keep the student
   and their attendance.
-- Closing a group (`active: false`) keeps its history and stops generation, like an
-  inactive teacher.
+- Archiving a group (`active: false`, labelled "Archived", no longer "Closed") keeps
+  its history and stops generation, like an inactive teacher. It also removes the
+  group's future SCHEDULED classes that have no attendance
+  (`removeUpcomingGroupClasses`), so an archived group does not linger on the calendar.
 - The group's language is locked while it has members: they joined because they study it.
 - **Editing a recurring series from a group class is refused** with a message pointing at
   the group. Splitting a group series would have to decide what happens to every member's
@@ -270,21 +301,41 @@ or on the class it pays for. There is no invoice, no expected amount and no due 
 so the app can never show "outstanding from students" — the finance screen says so
 rather than leaving a hole where a figure should be.
 
-`TeacherPayout` — one row per teacher per period. Its point is `paidOn`: null means
-still owed, a date means settled. The amount is typed in by staff, because the rates
-live with them and not in this system yet. Unique on `(teacherId, periodStart,
-periodEnd)`, so recording a period twice updates it instead of duplicating it.
+`TeacherPayout` — one row per teacher per **pay week**. Its point is `paidOn`: null
+means still owed, a date means settled. Unique on `(teacherId, periodStart,
+periodEnd)`, so paying a week twice updates it instead of duplicating it.
 
-Hours are **never stored on a payout**. They are derived from COMPLETED classes in the
-period (`teachingLoad` in `src/features/finance/money.ts`), split individual/group, so
-they can never drift from the calendar. Whether cancelled classes are paid is still
-unconfirmed — currently they count for nothing, and only COMPLETED classes do.
+**Teacher pay is computed, not typed** (meeting 2026-09-21), by the pure rules in
+`src/features/finance/teacher-pay.ts`:
+- a pay week is Monday–Sunday, paid the **Friday after** (`paydayFor`, Monday + 11
+  days). `?week=` on `/payments?tab=payouts` picks it; the default is last week.
+- individual classes pay $200 an hour. Group classes pay $170 an hour for two
+  students, $10 more per extra student, capped at $200 for five (`groupHourlyCents`,
+  size clamped to 2–5). Group size counts participants not marked ABSENT or EXCUSED.
+- only COMPLETED classes are paid. This contradicts "cancelled classes are paid"
+  in the 2026-08-24 section below and is **still to be confirmed with DARPE** —
+  change `teacher-pay.ts`, nowhere else.
+- `payTeacherWeek` recomputes the amount on the server (`teacherWeekPayCents`) and
+  never trusts a figure from the client. If classes change after a week was paid,
+  the card offers "Update to $X".
+- "Owed to teachers" (`getTeacherOwed`) sums completed classes in unpaid weeks,
+  looking back `OWED_LOOKBACK_WEEKS` (12).
+- the rates are constants, not Settings — whether they should be editable is open.
 
 Amounts are integer cents (`amountCents`), always. `parseAmountToCents` splits on the
 decimal point rather than multiplying by 100, because `2380.15 * 100` is not 238015 in
-floating point. **MXN and USD are never added together** — `totalByCurrency` returns one
-total per currency and every screen shows them side by side. A single mixed figure would
-be true in neither currency.
+floating point.
+
+**Everything is in pesos** (meeting 2026-09-21). A payment in USD, CAD or EUR is
+entered with the rate of the day ("Pesos per 1 USD") and stored at its MXN value in
+`amountCents`, with `originalCurrency`, `originalAmountCents` and
+`exchangeRateMicros` kept beside it so the conversion can be read back.
+`src/features/finance/currency.ts` owns the conversion; rates are integer micros.
+Payments recorded before this change may still carry USD — `totalByCurrency` keeps
+them separate rather than adding them to pesos.
+
+The 36 payments imported from the register were **deleted on 2026-09-21** at DARPE's
+request; staff register payments from scratch.
 
 Payment methods are CASH, STRIPE and TRANSFER. Stripe is a label here, not an
 integration: nothing in this app talks to Stripe.
@@ -393,6 +444,8 @@ exercise, not how anyone is paid.
 
 **Cancelled classes are paid.** Teachers are flexible, but students must give at
 least an hour's notice — the teacher has already organised their day around it.
+*Not implemented:* the weekly pay breakdown counts only COMPLETED classes, and
+whether a late cancellation pays the teacher is being re-confirmed (see Money).
 
 **Class length is one hour**, and the picker offers half-hour steps
 (`DURATION_OPTIONS`).
@@ -480,6 +533,49 @@ Never:
 Validate server action inputs with Zod.
 
 Authentication and authorization must be checked on the server.
+
+**An exported server action is a public endpoint.** Anything `export async
+function` in a `"use server"` file can be called by anyone who can reach the
+app, so every one of them starts with `requireUser()` and parses its input with
+Zod — and an action no screen calls is deleted rather than left lying around
+(`deletePayment` went that way on 2026-09-22).
+
+### Hardening in place (audited 2026-09-22)
+
+- **Security headers** for every response, set in `next.config.ts`: a CSP that
+  is `'self'` throughout — the app loads no third-party script, style, font or
+  image, and the browser never talks to Supabase directly — plus HSTS,
+  `nosniff`, `frame-ancestors 'none'` with `X-Frame-Options`, a referrer policy
+  and a `Permissions-Policy` that turns the camera, microphone, geolocation,
+  payment and USB APIs off. `poweredByHeader` is off. The one loose thread is
+  `'unsafe-inline'` on scripts, which Next's inline bootstrap needs until the
+  proxy rewrites the header with a per-request nonce.
+- **`robots.txt` disallows everything** (`src/app/robots.ts`) and, like the
+  manifest, is excluded from the session guard — behind it, the file telling
+  crawlers to stay away came back as the login page.
+- **Row Level Security is on for all 17 tables with zero policies**, so the
+  Supabase REST API answers nothing to `anon` or `authenticated` even though
+  those roles hold grants. Prisma connects as the owner and authorization
+  stays in application code. Verified against the live database, not just the
+  migrations.
+- **No secrets reach the browser**: the only `NEXT_PUBLIC_` values are the
+  Supabase URL and publishable key, and `SUPABASE_SECRET_KEY` is read exclusively
+  by `src/lib/supabase/admin.ts`, which is `server-only`.
+- **Provider errors are not forwarded** to the screen: sign-in failures read
+  "Invalid email or password" (no account enumeration) and the team actions
+  return their own wording rather than Supabase's.
+- **Dependencies**: `pnpm audit --prod` is clean. Next was on 16.2.10, which
+  carries a critical unauthenticated RCE and a **proxy-bypass** advisory —
+  exactly the guard this app relies on — so it is pinned at 16.3.5. The `shadcn`
+  CLI moved to devDependencies, and `pnpm-workspace.yaml` holds overrides for
+  transitive advisories upstream has not resolved. Re-run `pnpm audit` before
+  each deploy; the machine's pnpm also refuses packages published in the last
+  few hours, which is worth keeping.
+
+Still open, and worth doing before this is on the public internet for long:
+sign-in throttling (Supabase's own auth rate limits are the only thing in front
+of the login form today; its captcha option is the next step), and a nonce-based
+CSP.
 
 ## Git Workflow
 
@@ -598,7 +694,19 @@ Students and teachers:
 - `Teacher.hourlyRateCents` and `Teacher.notes` exist in the schema but have no UI —
   rate is a finance-phase concern
 
-Dashboard (`/dashboard`):
+Dashboard (`/dashboard`), redesigned 2026-09-22:
+- a **2×2 of equal cards** from `lg` up (Ian, 2026-09-22 — both earlier layouts
+  left the two columns ending at different heights): Today │ Needs attention
+  (+ notes) on a fixed-height top row where a long list scrolls inside its own
+  card, Class activity │ Money below. One column on a phone, chart last.
+  **Today** is a timeline (`today-timeline.tsx`; one line per class with the
+  teacher right beside the name — ended ones fade, the running one says "Now",
+  exactly one says "Next" — `timelinePhases` in `src/features/dashboard/timeline.ts`).
+  **Needs attention** is an inbox grouped by day (`attention-inbox.tsx`, 6 rows
+  then "N more", "All caught up" when empty). The two lists used to share one
+  row component and read as the same card twice — keep them visually different.
+- calendar cards, the legend and both dashboard lists carry the language's
+  two-letter code (`languageCode` in `src/lib/tone.ts`) beside its colour.
 - greets the signed-in staff member by the first word of their `Profile.name`
   (server-rendered, academy wall-clock hour; blank name degrades to the plain greeting)
 - operational only, timezone-correct via `src/features/dashboard/windows.ts`: today's
@@ -631,9 +739,10 @@ Visual foundation:
 Money screens:
 - `/payments` — two tabs. **Students**: everyone on a course, their plan, its list
   price and whether they have paid, with the status chip editable in place.
-  **Teacher payouts**: every active teacher's period with their hours and whether
-  they have been settled. A teacher who taught nothing still appears, because a zero
-  is how staff know the period was checked.
+  **Teacher pay** (`?tab=payouts&week=`): one card per teacher for the pay week,
+  with the computed amount, "See classes", a method and "Mark paid" (undoable).
+  Teachers with no completed classes are listed on one line underneath, because a
+  zero is how staff know the week was checked.
 - What a student pays is **inferred from their modality**, never invoiced: DARPE has
   no invoices, so there are no invoice numbers or due dates anywhere. `pricing.ts`
   holds the default list prices; Settings → Course prices overrides them per
@@ -663,10 +772,18 @@ Money screens:
   that one code is caught.
 
 Navigation: grouped sidebar — Overview (Dashboard), Operations (Calendar, Students,
-Groups, Teachers), Money (Finance, Payments), Workspace (Settings). Navigation never
-links to a missing page. A phone has five tabs (Home, Calendar, Students, Groups,
+Groups, Teachers), Money (Finance, Payments), Workspace (Notes, Settings). Navigation never
+links to a missing page. On a desktop the sidebar **folds to an icon rail** (Ian,
+2026-09-22), mainly to give the calendar its width. The toggle is the menu's **last row**,
+"« Collapse", styled exactly like the entries above it (GitLab, the Azure portal).
+Three placements at the top failed review: a panel icon read as a strange box, a
+☰ beside the wordmark crowded it off-centre, and a round handle on the border
+looked like nothing else in the app. The top belongs to the brand alone: every entry keeps its name as
+a tooltip and for screen readers, and the state lives in a cookie
+(`src/components/shared/sidebar-state.ts`) that the `(app)` layout reads, so the
+first paint is already the right width instead of opening and snapping shut. A phone has five tabs (Home, Calendar, Students, Groups,
 Teachers) and a slim top bar, `MobileTopBar`, whose avatar opens a bottom sheet
-with Finance, Payments, Settings and Sign out — the pattern Gmail and Google
+with Notes, Finance, Payments, Settings and Sign out — the pattern Gmail and Google
 Calendar use — instead of a sixth tab.
 
 Design system (see DESIGN.md for the rules; these are the modules):
@@ -724,9 +841,26 @@ Real data (imported 2026-09-12 from DARPE's register workbook):
 - register payments carry a note saying the method was not recorded; amounts ending
   in $60 were recorded as Stripe (the card fee), everything else as transfer. Both
   need confirming with DARPE
-- HUMANITAS is excluded by design; "ITALIANO" and "Conversation club" in the
-  timetable name no student or group and were not imported — DARPE has to say
-  what they are
+- the 2026-09-21 meeting changes were applied by `scripts/meeting-2026-09-21.ts`
+  (dry run by default, `--apply` writes; also git-ignored): old slots end on
+  2026-09-21 and their replacements start 2026-09-22; Tania removed; Dhanna teaches
+  Japanese and took Grupo VI; Grupo VII archived; Grupo IX (Arianne, French, Sat
+  09:00–11:00) created; register payments deleted. September and October were then
+  generated through the calendar. Several lines of that meeting were ambiguous and
+  are listed as questions for DARPE; Jorge and Brayan have no fixed slot on purpose
+- HUMANITAS is excluded by design; "ITALIANO" in the timetable names no student
+  or group — it is Grupo X (Pagella, Tue and Sat 09:00, still no members), which
+  DARPE has yet to confirm
+- **Conversation club** is real and new (Ian, 2026-09-22): an open English
+  conversation club, with nobody signed up yet. Created as a group with no
+  members and **no weekly pattern**, so it is visible and generates nothing until
+  staff fill it in. Gabriela Payán is a placeholder teacher they can change.
+- the 2026-09-22 workbook (`private-data/registro-2026-09-22.xlsx`, ignored)
+  confirmed: Vale and Iván are teachers, Ángel Caballero is Vale's, Jesús Gómez
+  is Iván's, and the Diana in Grupo VI is the teacher Diana taking Japanese as
+  BENEFIT. Grupo IX had a duplicate Saturday 10:00 pattern from the import beside
+  the meeting's 09:00 one; the 10:00 one had generated nothing and was deleted
+  (`scripts/fixes-2026-09-22.ts`)
 
 **Never run `pnpm build` while `pnpm dev` is running.** Both write `.next/`. On
 2026-09-14 a build during a dev session left the dev server serving stale CSS:
@@ -752,15 +886,16 @@ Testing:
 
 ### Latest verification
 
-All four checks were run on 2026-09-15 against this state and passed (the build
+All five checks were run on 2026-09-22 against this state and passed (the build
 with the dev server stopped):
 
 | Command | Result |
 | --- | --- |
 | `pnpm lint` | clean, no errors or warnings |
 | `pnpm typecheck` | clean, no type errors |
-| `pnpm test` | 36 test files, 580 tests passed |
-| `pnpm build` | succeeded — 19 routes plus the proxy |
+| `pnpm test` | 43 test files, 619 tests passed |
+| `pnpm build` | succeeded — 21 routes plus the proxy |
+| `pnpm audit --prod` | no known vulnerabilities |
 
 `pnpm shots` also captures the login screen and now covers the calendar and
 settings at both widths, so a change to either is reviewable without a browser.
@@ -771,3 +906,13 @@ standing guarantee.
 The next feature should be determined from the project's actual requirements and current repository state.
 
 Do not assume the next feature solely from previous conversation context.
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

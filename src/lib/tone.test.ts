@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { TONES, TONE_CLASSES, avatarTone, initialsOf, languageTone } from "./tone";
+import {
+  TONES,
+  TONE_CLASSES,
+  avatarTone,
+  initialsOf,
+  languageCode,
+  languageTone,
+} from "./tone";
 
 /** Every language DARPE teaches, in English and in Spanish. */
 const ACADEMY = [
@@ -14,7 +21,30 @@ const ACADEMY = [
   ["Swedish", "Sueco"],
 ] as const;
 
+describe("languageCode", () => {
+  it("labels each language with its own two letters, in either spelling", () => {
+    const codes = ACADEMY.map(([name]) => languageCode({ name }));
+
+    expect(codes).toEqual(["EN", "ES", "FR", "IT", "DE", "JA", "ZH", "KO", "SV"]);
+    for (const [english, spanish] of ACADEMY) {
+      expect(languageCode({ name: spanish })).toBe(languageCode({ name: english }));
+    }
+  });
+
+  it("prefers the stored code, and falls back to the name's first letters", () => {
+    expect(languageCode({ name: "English (business)", code: "en" })).toBe("EN");
+    expect(languageCode({ name: "Português" })).toBe("PO");
+  });
+});
+
 describe("languageTone", () => {
+  it("keeps English and French in different colour families", () => {
+    // Side by side on the calendar, navy and blue read as one colour.
+    const blues = new Set(["blue", "indigo", "cyan", "violet"]);
+    expect(languageTone({ name: "French" })).toBe("blue");
+    expect(blues.has(languageTone({ name: "English" }))).toBe(false);
+  });
+
   /*
    * These assert the rules rather than the palette. Which colour Spanish gets
    * is a design decision that may change; that no two languages share one, and

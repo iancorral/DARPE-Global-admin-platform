@@ -25,15 +25,20 @@ export type TabPanel = {
 export function TabSwitch({
   tabs,
   label,
+  defaultTab,
   className,
 }: {
   tabs: TabPanel[];
   /** What the group of tabs is for, e.g. "Payments view". */
   label: string;
+  /** The tab to open on, e.g. when a link points at the second one. */
+  defaultTab?: string;
   className?: string;
 }) {
   const base = useId();
-  const [active, setActive] = useState(tabs[0]?.id ?? "");
+  const [active, setActive] = useState(
+    tabs.some((tab) => tab.id === defaultTab) ? (defaultTab as string) : (tabs[0]?.id ?? "")
+  );
 
   return (
     <div className={className}>

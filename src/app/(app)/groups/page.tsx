@@ -70,7 +70,7 @@ export default async function GroupsPage() {
                     )}
                   </div>
                   <Badge variant={group.active ? "default" : "outline"}>
-                    {group.active ? "Active" : "Closed"}
+                    {group.active ? "Active" : "Archived"}
                   </Badge>
                 </div>
 

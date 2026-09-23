@@ -4,7 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
-import { ChevronRight, LogOut, Receipt, Settings, Wallet } from "lucide-react";
+import { ChevronRight, LogOut, Receipt, Settings, StickyNote, Wallet } from "lucide-react";
 import wordmark from "../../../public/brand/darpe-wordmark.webp";
 import { DialogOverlay, DialogPortal } from "@/components/ui/dialog";
 import { InitialsAvatar } from "@/components/shared/identity";
@@ -12,6 +12,7 @@ import { logout } from "@/features/auth/actions";
 
 /** What a phone reaches through the account menu instead of a tab of its own. */
 const ACCOUNT_LINKS = [
+  { href: "/notes", label: "Notes", icon: StickyNote },
   { href: "/finance", label: "Finance", icon: Wallet },
   { href: "/payments", label: "Payments", icon: Receipt },
   { href: "/settings", label: "Settings", icon: Settings },

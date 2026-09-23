@@ -58,7 +58,7 @@ export function GroupIdentityCard({
               checked={group.active}
               label="Whether this group still runs"
               onLabel="Active"
-              offLabel="Closed"
+              offLabel="Archived"
               save={(next) => quickEditGroup({ id: group.id, field: "active", value: next })}
             />
             <span className="text-sm text-muted-foreground">

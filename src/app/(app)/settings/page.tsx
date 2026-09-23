@@ -8,16 +8,23 @@ import { CoursePricesPanel } from "@/features/settings/components/course-prices-
 import { LanguagesPanel } from "@/features/settings/components/languages-panel";
 import { TeachingHoursPanel } from "@/features/settings/components/teaching-hours-panel";
 import { ChangePassword } from "@/features/auth/components/change-password";
+import { getTeam } from "@/features/team/queries";
+import { TeamPanel } from "@/features/team/components/team-panel";
+import { canManageTeam } from "@/features/team/roles";
 import { requireUser } from "@/lib/auth";
+import { isAccountManagementConfigured } from "@/lib/supabase/admin";
 import { DEFAULT_TIMEZONE } from "@/lib/datetime";
 import { PageContainer, PageHeader, Section } from "@/components/shared/page";
 
 export default async function SettingsPage() {
-  const [profile, languages, hours, prices] = await Promise.all([
-    requireUser(),
+  const profile = await requireUser();
+  const managesTeam = canManageTeam(profile.role);
+
+  const [languages, hours, prices, team] = await Promise.all([
     getLanguageRows(),
     getTeachingHours(),
     getCoursePrices(),
+    managesTeam ? getTeam() : Promise.resolve([]),
   ]);
   const offered = languages.filter((language) => language.active).length;
 
@@ -30,25 +37,26 @@ export default async function SettingsPage() {
           Everything else on this page is DARPE's; this one section is the
           person's own, which is why it says whose account it is changing.
         */}
-        <Section
-          id="your-account"
-          title="Your account"
-          description={profile.email}
-        >
+        <Section id="your-account" title="Your account" description={profile.email}>
           <ChangePassword hasOwnPassword={profile.passwordSetAt !== null} />
         </Section>
 
-        <Section
-          title="Course prices"
-          description="Monthly price per course"
-        >
+        {/* Only the owner and admins see who has an account and can add people. */}
+        {managesTeam && (
+          <Section title="Team" description={`${team.length} with access`}>
+            <TeamPanel
+              members={team}
+              currentUserId={profile.id}
+              configured={isAccountManagementConfigured()}
+            />
+          </Section>
+        )}
+
+        <Section title="Course prices" description="Monthly price per course">
           <CoursePricesPanel prices={prices} />
         </Section>
 
-        <Section
-          title="Teaching hours"
-          description="The hours of a normal day at the academy"
-        >
+        <Section title="Teaching hours" description="The hours of a normal day at the academy">
           <TeachingHoursPanel hours={hours} />
         </Section>
 

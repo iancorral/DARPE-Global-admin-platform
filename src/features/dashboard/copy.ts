@@ -45,8 +45,8 @@ export const DASHBOARD_COPY = {
 
   attentionTitle: "Needs attention",
   attentionDescription: "Finished classes still marked as scheduled",
-  attentionEmpty: "Nothing to resolve.",
-  attentionMore: (count: number) => `And ${count} more in the calendar.`,
+  attentionEmpty: "All caught up.",
+  attentionMore: (count: number) => `${count} more in the calendar`,
 
   overviewActiveStudents: "Active students",
   overviewPausedDetail: (count: number) =>

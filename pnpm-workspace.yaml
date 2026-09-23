@@ -7,3 +7,17 @@ allowBuilds:
 ignoredBuiltDependencies:
   - sharp
   - unrs-resolver
+
+# Patched versions forced on transitive dependencies, for advisories whose fix
+# has not reached the package that pulls them in (2026-09-22). Each one is a
+# release of the same major, and lint, typecheck, the test suite and the
+# production build are run after changing them. Drop an entry once the parent
+# ships a version that already resolves past it.
+overrides:
+  fast-uri: ">=3.1.6"
+  valibot: ">=1.4.2"
+  browserslist: ">=4.28.7"
+  baseline-browser-mapping: ">=2.11.0"
+  mysql2: ">=3.23.1"
+  find-my-way: ">=9.6.1"
+  deepmerge-ts: ">=8.0.0"

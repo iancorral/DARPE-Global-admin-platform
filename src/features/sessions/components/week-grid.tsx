@@ -3,7 +3,7 @@
 import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { Check, UsersRound } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { TONE_CLASSES, languageTone } from "@/lib/tone";
+import { TONE_CLASSES, languageCode, languageTone } from "@/lib/tone";
 import { placeDaySessions } from "../layout";
 import { isOutsideBusinessHour, type BusinessHours } from "../business-hours";
 import {
@@ -433,6 +433,23 @@ export function WeekGrid({
                           <UsersRound aria-hidden="true" className="size-3.5 shrink-0" />
                         )}
                         <span className="truncate">{sessionTitle(session)}</span>
+                        {/*
+                          The language in letters as well as colour, so EN and FR
+                          never depend on telling two tints apart. Left out of a
+                          card sharing its column, where the name needs the room.
+                        */}
+                        {placement.widthPercent > 50 && (
+                          <span
+                            className={cn(
+                              "ml-auto shrink-0 rounded px-1 py-px text-[10px] leading-none font-bold tracking-wide",
+                              isCancelled || isCompleted
+                                ? "bg-muted text-muted-foreground"
+                                : ["bg-white/75", tone.text]
+                            )}
+                          >
+                            {languageCode({ name: session.languageName })}
+                          </span>
+                        )}
                       </span>
                       <span className="block truncate text-[11px] text-muted-foreground">
                         {session.startLabel} · {session.teacherName.split(" ")[0]}

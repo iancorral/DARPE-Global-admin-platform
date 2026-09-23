@@ -13,6 +13,12 @@ export type DashboardSession = {
   id: string;
   /** "HH:mm" in the academy timezone. */
   startLabel: string;
+  /** "HH:mm" the class ends, academy time. */
+  endLabel: string;
+  /** Real instants, for placing the class against the clock on the timeline. */
+  startsAtMs: number;
+  endsAtMs: number;
+  isGroup: boolean;
   /** Academy date, e.g. "Mon, Aug 10". Today's list leaves it out. */
   dateLabel: string;
   /** Link target: the calendar week containing this class. */
@@ -48,6 +54,13 @@ export type DashboardData = {
   monthStartDate: string;
 };
 
+/**
+ * How many unresolved classes the inbox lists before "N more". Six fit the
+ * top row of the dashboard beside a normal day's timeline without either card
+ * needing to scroll.
+ */
+const ATTENTION_SHOWN = 6;
+
 const SESSION_SELECT = {
   id: true,
   startsAt: true,
@@ -67,10 +80,15 @@ type SessionRow = Prisma.ClassSessionGetPayload<{ select: typeof SESSION_SELECT 
 function toDashboardSession(session: SessionRow): DashboardSession {
   const date = formatInZone(session.startsAt, DEFAULT_TIMEZONE, "yyyy-MM-dd");
   const student = session.participants[0]?.student;
+  const endsAt = new Date(session.startsAt.getTime() + session.durationMinutes * 60_000);
 
   return {
     id: session.id,
     startLabel: formatInZone(session.startsAt, DEFAULT_TIMEZONE),
+    endLabel: formatInZone(endsAt, DEFAULT_TIMEZONE),
+    startsAtMs: session.startsAt.getTime(),
+    endsAtMs: endsAt.getTime(),
+    isGroup: session.group !== null,
     dateLabel: formatInZone(session.startsAt, DEFAULT_TIMEZONE, "EEE, MMM d"),
     weekHref: `/calendar?week=${startOfWeekDate(date)}`,
     status: session.status,
@@ -118,7 +136,7 @@ export async function getDashboardData(now: Date = new Date()): Promise<Dashboar
       where: { status: "SCHEDULED", startsAt: { lt: endedCutoff } },
       select: SESSION_SELECT,
       orderBy: { startsAt: "asc" },
-      take: 5,
+      take: ATTENTION_SHOWN,
     }),
     db.classSession.count({
       where: { status: "SCHEDULED", startsAt: { lt: endedCutoff } },
@@ -141,7 +159,7 @@ export async function getDashboardData(now: Date = new Date()): Promise<Dashboar
   ]);
 
   const justEnded = recentlyStarted.filter((session) => hasFullyEnded(session, now));
-  const needCompletion = [...settledOverdue, ...justEnded].slice(0, 5);
+  const needCompletion = [...settledOverdue, ...justEnded].slice(0, ATTENTION_SHOWN);
   const needCompletionCount = settledOverdueCount + justEnded.length;
 
   const studentCounts: Record<StudentStatus, number> = {

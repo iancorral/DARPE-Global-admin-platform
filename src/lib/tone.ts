@@ -168,9 +168,15 @@ function normalize(value: string): string {
  * - Japanese takes crimson (the flag is a red circle and nothing else) and
  *   Chinese takes the warmer vermilion beside it.
  * - German goes graphite for the black in its flag rather than a fourth red.
- * - French keeps the bright flag blue, English the navy of the Union Jack and
- *   the US flag, Swedish the pale blue of its own, Korean the deep blue-green
- *   half of the taegeuk.
+ * - French keeps the bright flag blue and Swedish the pale blue of its own.
+ * - English is teal, not navy. Navy sat next to French blue and next to DARPE's
+ *   violet, and on a calendar that is mostly English and French the two read
+ *   as one colour (Ian, 2026-09-22). English is the most common class, so it
+ *   gets a hue nothing else shares. Korean takes the indigo instead — the
+ *   blue half of the taegeuk, and rare enough not to crowd French.
+ *
+ * Colour is never the only signal: calendar cards also carry the two-letter
+ * code from `languageCode`.
  *
  * Violet is deliberately absent: it is DARPE's own colour, and a language
  * wearing it would compete with the interface. Plum stays unassigned so it can
@@ -178,21 +184,21 @@ function normalize(value: string): string {
  */
 const TONE_BY_LANGUAGE_CODE: Record<string, Tone> = {
   es: "amber",
-  en: "indigo",
+  en: "teal",
   fr: "blue",
   it: "moss",
   de: "slate",
   ja: "rose",
   zh: "clay",
-  ko: "teal",
+  ko: "indigo",
   sv: "cyan",
 };
 
 const TONE_BY_LANGUAGE_NAME: Record<string, Tone> = {
   spanish: "amber",
   espanol: "amber",
-  english: "indigo",
-  ingles: "indigo",
+  english: "teal",
+  ingles: "teal",
   french: "blue",
   frances: "blue",
   italian: "moss",
@@ -205,8 +211,8 @@ const TONE_BY_LANGUAGE_NAME: Record<string, Tone> = {
   chinese: "clay",
   chino: "clay",
   mandarin: "clay",
-  korean: "teal",
-  coreano: "teal",
+  korean: "indigo",
+  coreano: "indigo",
   swedish: "cyan",
   sueco: "cyan",
   svenska: "cyan",
@@ -229,6 +235,32 @@ export function languageTone(language: { name: string; code?: string | null }): 
   if (code && TONE_BY_LANGUAGE_CODE[code]) return TONE_BY_LANGUAGE_CODE[code];
 
   return TONE_BY_LANGUAGE_NAME[normalize(language.name)] ?? "plum";
+}
+
+/** Every accepted name, by the ISO code it stands for. */
+const CODE_BY_LANGUAGE_NAME: Record<string, string> = Object.fromEntries(
+  Object.keys(TONE_BY_LANGUAGE_NAME).map((name) => [
+    name,
+    Object.entries(TONE_BY_LANGUAGE_CODE).find(
+      ([, tone]) => tone === TONE_BY_LANGUAGE_NAME[name]
+    )?.[0] ?? "",
+  ])
+);
+
+/**
+ * The two-letter label a language wears beside its colour — EN, FR, JA.
+ *
+ * Colour alone is not enough to tell two classes apart (it fails for anyone
+ * with colour-blindness, and on a washed-out projector), so the calendar
+ * prints this too. The stored code wins; a known name maps to its code; an
+ * unknown language shows its own first two letters rather than nothing.
+ */
+export function languageCode(language: { name: string; code?: string | null }): string {
+  const code = language.code ? normalize(language.code) : "";
+  if (code && TONE_BY_LANGUAGE_CODE[code]) return code.toUpperCase();
+
+  const name = normalize(language.name);
+  return (CODE_BY_LANGUAGE_NAME[name] || name.replace(/[^a-z]/g, "").slice(0, 2)).toUpperCase();
 }
 
 /**

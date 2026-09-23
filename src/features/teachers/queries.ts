@@ -44,21 +44,6 @@ export async function getTeacherRows(): Promise<TeacherListRow[]> {
   }));
 }
 
-export async function getTeacherById(id: string) {
-  return db.teacher.findUnique({
-    where: { id },
-    select: {
-      id: true,
-      firstName: true,
-      lastName: true,
-      email: true,
-      phone: true,
-      active: true,
-      languages: { select: { languageId: true } },
-    },
-  });
-}
-
 export type TeacherUpcomingSession = {
   id: string;
   /** e.g. "Mon, Aug 10" in the academy timezone. */

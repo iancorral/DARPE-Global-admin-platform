@@ -2,7 +2,19 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarX, Check, Move, Pencil, RotateCcw } from "lucide-react";
+import {
+  Ban,
+  CalendarDays,
+  CalendarX,
+  Check,
+  Clock,
+  GraduationCap,
+  Move,
+  Pencil,
+  Repeat,
+  RotateCcw,
+  type LucideIcon,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,6 +23,8 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { DateField } from "@/components/shared/date-field";
+import { InitialsAvatar, LanguageChip } from "@/components/shared/identity";
+import { TONE_CLASSES, languageTone } from "@/lib/tone";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -38,7 +52,41 @@ const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline"> = {
   CANCELLED: "outline",
 };
 
+const STATUS_LABELS: Record<string, string> = {
+  SCHEDULED: "Scheduled",
+  COMPLETED: "Completed",
+  CANCELLED: "Cancelled",
+};
+
 const DEFAULT_ATTENDANCE: AttendanceValue = "PRESENT";
+
+/** "Monday, Sep 21" from a calendar date, read as that date and nothing else. */
+function dayLabel(date: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(`${date}T12:00:00Z`));
+}
+
+/** 60 → "1 h", 90 → "1 h 30 min", 45 → "45 min". */
+function durationLabel(minutes: number): string {
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (hours === 0) return `${rest} min`;
+  return rest === 0 ? `${hours} h` : `${hours} h ${rest} min`;
+}
+
+/** One fact about the class, behind the icon that names it. */
+function DetailRow({ icon: Icon, children }: { icon: LucideIcon; children: React.ReactNode }) {
+  return (
+    <li className="flex items-start gap-3">
+      <Icon aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+      <div className="min-w-0 wrap-break-word">{children}</div>
+    </li>
+  );
+}
 
 /** How much of a recurring series an edit applies to. */
 const EDIT_SCOPES = ["single", "series"] as const;
@@ -169,6 +217,7 @@ function SessionDetail({
   // attendance is taken.
   const title = sessionTitle(session);
   const groupSize = groupSizeLabel(session);
+  const tone = TONE_CLASSES[languageTone({ name: session.languageName })];
 
   /**
    * Move mode lives in the URL, so starting one is a navigation. It waits for this
@@ -322,22 +371,30 @@ function SessionDetail({
 
   return (
     <>
-      <DialogHeader>
-        <DialogTitle>{title}</DialogTitle>
-        <DialogDescription>
-          {session.languageName} · {session.teacherName}
-          {groupSize && ` · ${groupSize}`}
-        </DialogDescription>
+      {/*
+        Laid out like a calendar event card (Google Calendar, Outlook): the
+        class's own colour on the left of the title, then one line per fact,
+        each behind an icon, so the eye runs straight down a single column.
+      */}
+      <DialogHeader className="gap-3">
+        <div className="flex items-start gap-3">
+          <span
+            aria-hidden="true"
+            className={cn("mt-1 size-3.5 shrink-0 rounded", tone.dot)}
+          />
+          <div className="min-w-0 space-y-1.5">
+            <DialogTitle className="font-serif text-xl leading-tight font-semibold">
+              {title}
+            </DialogTitle>
+            <DialogDescription className="flex flex-wrap items-center gap-2">
+              <LanguageChip name={session.languageName} className="h-5 py-0" />
+              <Badge variant={STATUS_VARIANT[status]}>{STATUS_LABELS[status]}</Badge>
+            </DialogDescription>
+          </div>
+        </div>
       </DialogHeader>
 
       <DialogBody>
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge variant={STATUS_VARIANT[status]}>{status}</Badge>
-        {session.isGenerated && (
-          <span className="text-xs text-muted-foreground">From a recurring schedule</span>
-        )}
-      </div>
-
       {confirmingEnd ? (
         <div className="space-y-3 rounded-md border border-dashed border-destructive/40 p-4">
           <p className="text-sm font-medium">End this series from this class?</p>
@@ -489,30 +546,32 @@ function SessionDetail({
           )}
         </div>
       ) : (
-        <dl className="space-y-2 text-sm">
-          <div className="flex justify-between gap-4">
-            <dt className="shrink-0 text-muted-foreground">When</dt>
-            <dd className="min-w-0 text-right wrap-break-word">
-              {session.date} · {session.startLabel} – {session.endLabel}
-            </dd>
-          </div>
-          <div className="flex justify-between gap-4">
-            <dt className="shrink-0 text-muted-foreground">Duration</dt>
-            <dd className="min-w-0 text-right">{session.durationMinutes} min</dd>
-          </div>
-          <div className="flex justify-between gap-4">
-            <dt className="shrink-0 text-muted-foreground">Teacher</dt>
-            <dd className="min-w-0 text-right wrap-break-word">{session.teacherName}</dd>
-          </div>
-        </dl>
+        <ul className="space-y-3 text-sm">
+          <DetailRow icon={Clock}>
+            <span className="font-medium">{dayLabel(session.date)}</span>
+            <span className="block text-muted-foreground tabular-nums">
+              {session.startLabel} – {session.endLabel} · {durationLabel(session.durationMinutes)}
+            </span>
+          </DetailRow>
+          <DetailRow icon={GraduationCap}>{session.teacherName}</DetailRow>
+          <DetailRow icon={session.belongsToSeries ? Repeat : CalendarDays}>
+            {session.belongsToSeries ? "Every week" : "One-off class"}
+            {groupSize && <span className="text-muted-foreground"> · {groupSize}</span>}
+          </DetailRow>
+        </ul>
       )}
 
       {showAttendance && !isEditing && !confirmingEnd && (
-        <div className="space-y-3 border-t pt-4">
-          <p className="text-sm font-semibold">Attendance</p>
+        <div className="space-y-2 border-t pt-4">
+          <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+            Attendance
+          </p>
           {session.participants.map((participant) => (
             <div key={participant.id} className="flex items-center justify-between gap-3">
-              <span className="min-w-0 flex-1 truncate text-sm">{participant.studentName}</span>
+              <span className="flex min-w-0 flex-1 items-center gap-2.5">
+                <InitialsAvatar name={participant.studentName} className="size-7 text-[11px]" />
+                <span className="truncate text-sm font-medium">{participant.studentName}</span>
+              </span>
               <Select
                 items={ATTENDANCE_OPTIONS.map((option) => ({
                   label: option.label,
@@ -528,7 +587,7 @@ function SessionDetail({
                 }
               >
                 <SelectTrigger
-                  className="w-32"
+                  className="w-36"
                   aria-label={`Attendance for ${participant.studentName}`}
                 >
                   <SelectValue />
@@ -546,15 +605,15 @@ function SessionDetail({
         </div>
       )}
 
-      {!confirmingEnd && (
+      {!confirmingEnd && (status !== "SCHEDULED" || isEditing) && (
         <p className="text-xs text-muted-foreground">
           {status === "COMPLETED"
-            ? "Completed classes keep the time they happened. Reopen the class to change it."
+            ? "Reopen the class to change its time."
             : status === "CANCELLED"
-              ? "Cancelled classes keep their original time. Restore the class to change it."
+              ? "Restore the class to change its time."
               : isSeriesScope
-                ? "Nothing is saved until you confirm, and a clash in any week refuses the whole change."
-                : "Changes apply to this session only. The recurring schedule stays as it is."}
+                ? "A clash in any week refuses the whole change."
+                : "Only this class changes."}
         </p>
       )}
       </DialogBody>
@@ -566,7 +625,7 @@ function SessionDetail({
       */}
       <DialogFooter className="sm:justify-between">
         {confirmingEnd && (
-          <>
+          <div className="grid w-full grid-cols-2 gap-2">
             <Button
               variant="outline"
               onClick={() => setConfirmingEnd(false)}
@@ -575,28 +634,28 @@ function SessionDetail({
               Keep the series
             </Button>
             <Button
-              variant="ghost"
-              className="text-destructive"
+              variant="destructive"
               onClick={handleEndSeries}
               disabled={isPending}
             >
               {isPending ? "Ending..." : "End series"}
             </Button>
-          </>
+          </div>
         )}
 
         {!confirmingEnd && status === "CANCELLED" && (
           <Button
             variant="outline"
+            className="w-full"
             onClick={() => handleStatus("SCHEDULED", "Session restored")}
             disabled={isPending}
           >
-            Restore session
+            <RotateCcw className="size-4" /> Restore class
           </Button>
         )}
 
         {!confirmingEnd && status === "COMPLETED" && (
-          <>
+          <div className="grid w-full grid-cols-2 gap-2">
             <Button
               variant="outline"
               onClick={() => handleStatus("SCHEDULED", "Class reopened")}
@@ -607,52 +666,56 @@ function SessionDetail({
             <Button onClick={() => handleComplete("Attendance saved")} disabled={isPending}>
               {isPending ? "Saving..." : "Save attendance"}
             </Button>
-          </>
+          </div>
         )}
 
+        {/*
+          Two even rows rather than a ragged wrap: what you do to a class that
+          is happening on top, full width and equal, with the most common one —
+          marking it done — as the primary; the two ways to call it off below,
+          quieter and split evenly.
+        */}
         {!confirmingEnd && canEdit && !isEditing && (
-          <>
-            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+          <div className="grid w-full gap-2">
+            <div className="grid grid-cols-3 gap-2">
+              <Button variant="outline" onClick={() => setIsEditing(true)} disabled={isPending}>
+                <Pencil className="size-4" /> Edit
+              </Button>
+              <Button variant="outline" onClick={handleMove} disabled={isPending}>
+                <Move className="size-4" /> Move
+              </Button>
+              <Button
+                onClick={() => handleComplete("Class marked completed")}
+                disabled={isPending}
+              >
+                <Check className="size-4" /> Complete
+              </Button>
+            </div>
+            <div className={cn("grid gap-2", canEditSeries ? "grid-cols-2" : "grid-cols-1")}>
+              <Button
+                variant="ghost"
+                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                onClick={() => handleStatus("CANCELLED", "Session cancelled")}
+                disabled={isPending}
+              >
+                <Ban className="size-4" /> Cancel class
+              </Button>
               {canEditSeries && (
                 <Button
                   variant="ghost"
-                  className="text-destructive"
+                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
                   onClick={() => setConfirmingEnd(true)}
                   disabled={isPending}
                 >
                   <CalendarX className="size-4" /> End series
                 </Button>
               )}
-              <Button
-                variant="ghost"
-                className="text-destructive"
-                onClick={() => handleStatus("CANCELLED", "Session cancelled")}
-                disabled={isPending}
-              >
-                Cancel class
-              </Button>
             </div>
-
-            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
-              <Button
-                variant="outline"
-                onClick={() => handleComplete("Class marked completed")}
-                disabled={isPending}
-              >
-                <Check className="size-4" /> Mark completed
-              </Button>
-              <Button variant="outline" onClick={() => setIsEditing(true)} disabled={isPending}>
-                <Pencil className="size-4" /> Edit
-              </Button>
-              <Button onClick={handleMove} disabled={isPending}>
-                <Move className="size-4" /> Move class
-              </Button>
-            </div>
-          </>
+          </div>
         )}
 
         {!confirmingEnd && canEdit && isEditing && (
-          <>
+          <div className="grid w-full grid-cols-2 gap-2">
             <Button
               variant="outline"
               onClick={() => setIsEditing(false)}
@@ -665,14 +728,14 @@ function SessionDetail({
                 onClick={handleSaveSeries}
                 disabled={isPending || seriesDates.length === 0}
               >
-                {isPending ? "Saving..." : "Save this and future classes"}
+                {isPending ? "Saving..." : "Save future classes"}
               </Button>
             ) : (
               <Button onClick={handleSaveScheduling} disabled={isPending}>
                 {isPending ? "Saving..." : "Save changes"}
               </Button>
             )}
-          </>
+          </div>
         )}
       </DialogFooter>
     </>

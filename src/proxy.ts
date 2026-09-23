@@ -50,6 +50,10 @@ export async function proxy(request: NextRequest) {
  * login page's HTML. That does not error anywhere — it just silently means the
  * app cannot be installed on Android or Windows, and nothing says why.
  *
+ * `robots.txt` is excluded for the same reason: served from behind the guard it
+ * comes back as the login page's HTML, so the one file telling crawlers to stay
+ * out is the one file they cannot read.
+ *
  * `.ico` and `.webmanifest` are covered as extensions too, so an icon added
  * later is not accidentally put behind the session.
  */
@@ -57,6 +61,6 @@ export const config = {
   // One literal string, not a concatenation: Next parses this at build time
   // and cannot follow an expression.
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|webmanifest)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|robots.txt|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|webmanifest)$).*)",
   ],
 };
