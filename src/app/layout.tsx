@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { SPLASH_SCREENS } from "./splash-screens";
 import { Instrument_Sans, Newsreader } from "next/font/google";
 import "./globals.css";
 
@@ -39,16 +40,15 @@ export const metadata: Metadata = {
    *   was installed.
    * - `statusBarStyle` keeps the status bar legible over the lavender ground.
    *
-   * No `startupImage` here on purpose: a single portrait PNG declared as a
-   * universal launch image is stretched on every device it does not match, and
-   * doing it properly needs one file per device with matching media queries.
-   * The splash rasters in `public/brand/` are ready for that when DARPE says
-   * which devices matter.
+   * - `startupImage` is the launch screen: one image per iPhone screen size,
+   *   because iOS shows white rather than scale one that does not match. See
+   *   `splash-screens.ts`.
    */
   appleWebApp: {
     capable: true,
     title: "DARPE",
     statusBarStyle: "default",
+    startupImage: SPLASH_SCREENS,
   },
   formatDetection: {
     // Student phone numbers are data, not links to dial from an admin table.

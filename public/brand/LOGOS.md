@@ -65,9 +65,9 @@ on deep violet `#482D79` for iOS and the maskable icon. The wordmark and mascot
 sources are AI-assisted rasters with slight pixel colour variation, so preserve
 their proportions when displaying them.
 
-`darpe-splash-master.png` still shows the older violet continent globe. It is
-an editing source for a launch screen nothing declares yet — regenerate it to
-match the gold globe before any iOS launch image is added.
+`darpe-splash-master.png` still shows the older violet continent globe and is
+**not used**. The launch screens are built from the current brand instead —
+see *iOS launch screens* below.
 
 ## Integration status
 
@@ -93,11 +93,14 @@ exports. Masters are kept — regenerate any of them from those.
 - The maskable globe was measured inside a radius of 188.61px around the
   center of the 512px canvas; the standard safe radius is 204.8px (40%).
 - The favicon exports crop empty outer margin to make the mark larger at 16px.
-- **No iOS launch image is declared.** Safari needs one file per device with a
-  matching `apple-touch-startup-image` media query; a single portrait PNG
-  declared universally is stretched on every device it does not match. The
-  three example exports were removed for that reason — regenerate from
-  `darpe-splash-master.png` when DARPE says which devices matter.
+- **iOS launch screens** live in `splash/`, one PNG per iPhone screen size
+  (SE to 17 Pro Max), because Safari shows white rather than scale one that
+  does not match. `scripts/build-splash.mjs` renders them in Chromium: the gold
+  globe (`darpe-icon-512.png`) over the wordmark on the app's lavender ground
+  `#eee3f4`. The wordmark is redrawn from its own ink in brand violet — pasted
+  as is, the cut-out's leftover lavender-grey patches inside the R and P showed
+  on that ground. `src/app/splash-screens.ts` declares the same list; change
+  both together. Android builds its own from the manifest.
 - For a future in-app loading view, keep any progress feedback in HTML rather
   than embedding a fake spinner in a static image. Do not add an artificial delay.
 

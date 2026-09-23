@@ -834,6 +834,11 @@ Brand assets (`public/brand/`, documented in `public/brand/LOGOS.md`):
 - `src/proxy.ts` **must keep `manifest.webmanifest` out of the session guard**.
   Behind it the manifest came back as the login page's HTML, which silently
   makes the app uninstallable on Android and Windows
+- **iPhone launch screens** (2026-09-23): one image per screen size in
+  `public/brand/splash/`, rendered by `scripts/build-splash.mjs` and declared by
+  `src/app/splash-screens.ts` — keep the two lists in step. They cover the second
+  or two a cold Vercel function takes after idle hours. Android derives its own
+  from the manifest. `darpe-splash-master.png` is the old violet globe; unused
 - **the app is deliberately not offline-capable**: a service worker caching a
   scheduling tool is a way to show somebody last week's calendar
 
